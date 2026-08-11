@@ -8,10 +8,10 @@
 	// and are referenced here starting with a slash: '/images/logo.png'
 	// ---------------------------------------------------------------------
 	const images = {
-		logo: '/images/centerlogo.png', // shown big, in its own section at the top of the page
+		logo: '/images/dogwoodlogo-navyandgreen.png', // shown big, in its own section at the top of the page
 		hero: '/images/dogwoodflower.jpg', // large image inside the hero section
 		about: '/images/sunsetmarsh.jpg', // image next to the About text
-		footerLogo: '/images/centerlogo.png', // small logo shown in the dark footer
+		footerLogo: '/images/dogwoodlogo-navyandgreen.png', // small logo shown in the dark footer
 		serviceIcons: ['/images/floodedpath.jpg', '/images/manholeaudits.jpg', '/images/longroad.jpg', '/images/townhomes.jpg'] // one per service card, in order
 	};
 
@@ -389,15 +389,17 @@
 	:global(:root) {
 		--cream: #f7f3ea;
 		--cream-deep: #ede4d0;
-		--cream-line: #e0d6bd;
+		--cream-line: #ddd6bd;
 
-		--sage-light: #b7c6a4;
-		--sage: #6b8558;
-		--sage-dark: #445c37;
-		--sage-darker: #2b3a22;
+		--green-light: #a7c2a4;
+		--green: #3c5940;
+		--green-dark: #274031;
 
-		--text: #2b3626;
-		--text-soft: #5b6652;
+		--navy: #1b2a4a;
+		--navy-deep: #101a2d;
+
+		--text: #26313f;
+		--text-soft: #57646b;
 	}
 
 	:global(*) {
@@ -420,7 +422,7 @@
 	h2,
 	h3 {
 		font-family: 'Space Grotesk', sans-serif;
-		color: var(--sage-darker);
+		color: var(--navy);
 		margin: 0;
 		line-height: 1.15;
 	}
@@ -461,7 +463,7 @@
 		font-family: 'Space Grotesk', sans-serif;
 		font-weight: 600;
 		font-size: 18px;
-		color: var(--sage-darker);
+		color: var(--navy);
 	}
 
 	.nav__brand-sub {
@@ -481,7 +483,7 @@
 	}
 
 	.nav__links a:hover {
-		color: var(--sage-dark);
+		color: var(--green);
 	}
 
 	.nav__toggle {
@@ -500,7 +502,7 @@
 	.nav__toggle-bar {
 		height: 2px;
 		width: 100%;
-		background: var(--sage-darker);
+		background: var(--navy);
 		border-radius: 2px;
 	}
 
@@ -548,7 +550,7 @@
 		align-items: center;
 		justify-content: center;
 		background: var(--cream-deep);
-		border: 1px dashed var(--sage-light);
+		border: 1px dashed var(--green-light);
 		border-radius: 10px;
 		color: var(--text-soft);
 		font-size: 15px;
@@ -577,18 +579,18 @@
 	}
 
 	.btn-primary {
-		background: var(--sage-dark);
+		background: var(--navy);
 		color: var(--cream);
 	}
 
 	.btn-primary:hover {
-		background: var(--sage-darker);
+		background: var(--navy-deep);
 	}
 
 	.btn-ghost {
 		background: transparent;
-		border-color: var(--sage-light);
-		color: var(--sage-darker);
+		border-color: var(--green-light);
+		color: var(--navy);
 	}
 
 	.btn-ghost[disabled] {
@@ -601,8 +603,8 @@
 		font-weight: 600;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		background: var(--sage-light);
-		color: var(--sage-darker);
+		background: var(--green-light);
+		color: var(--navy);
 		padding: 3px 8px;
 		border-radius: 999px;
 	}
@@ -626,7 +628,7 @@
 		font-weight: 600;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: var(--sage-dark);
+		color: var(--green);
 		margin-bottom: 16px;
 	}
 
@@ -653,7 +655,7 @@
 		align-items: center;
 		justify-content: center;
 		background: var(--cream);
-		border: 1px dashed var(--sage-light);
+		border: 1px dashed var(--green-light);
 		color: var(--text-soft);
 		font-size: 14px;
 		object-fit: cover;
@@ -684,7 +686,7 @@
 		align-items: center;
 		justify-content: center;
 		background: var(--cream-deep);
-		border: 1px dashed var(--sage-light);
+		border: 1px dashed var(--green-light);
 		color: var(--text-soft);
 		font-size: 14px;
 		object-fit: cover;
@@ -702,7 +704,7 @@
 		font-weight: 600;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: var(--sage-dark);
+		color: var(--green);
 		margin-bottom: 10px;
 	}
 
@@ -761,7 +763,7 @@
 		align-items: center;
 		justify-content: center;
 		background: var(--cream-deep);
-		border-right: 1px dashed var(--sage-light);
+		border-right: 1px dashed var(--green-light);
 		color: var(--text-soft);
 		font-size: 12px;
 	}
@@ -774,7 +776,7 @@
 		font-size: 16px;
 		font-weight: 600;
 		margin-bottom: 6px;
-		color: var(--sage-darker);
+		color: var(--navy);
 	}
 
 	.service-card__text {
@@ -813,7 +815,7 @@
 		font-size: 17px;
 		font-weight: 600;
 		margin-bottom: 8px;
-		color: var(--sage-darker);
+		color: var(--navy);
 	}
 
 	.why-us__item-text {
@@ -844,7 +846,7 @@
 	   FOOTER
 	------------------------------------------------------------------- */
 	.footer {
-		background: var(--sage-darker);
+		background: var(--navy-deep);
 		color: var(--cream);
 		padding: 44px 24px;
 	}
@@ -863,10 +865,10 @@
 		justify-content: center;
 		margin: 0 auto 14px;
 		background: rgba(247, 243, 234, 0.08);
-		border: 1px dashed var(--sage-light);
+		border: 1px dashed var(--green-light);
 		border-radius: 6px;
 		font-size: 11px;
-		color: var(--sage-light);
+		color: var(--green-light);
 		object-fit: contain;
 	}
 
@@ -879,13 +881,13 @@
 
 	.footer__meta {
 		font-size: 14px;
-		color: var(--sage-light);
+		color: var(--green-light);
 		margin-bottom: 6px;
 	}
 
 	.footer__copy {
 		font-size: 13px;
-		color: var(--sage-light);
+		color: var(--green-light);
 		margin-top: 18px;
 	}
 
@@ -922,7 +924,7 @@
 		border-radius: 999px;
 		border: none;
 		background: var(--cream-deep);
-		color: var(--sage-darker);
+		color: var(--navy);
 		font-size: 18px;
 		line-height: 1;
 		cursor: pointer;
@@ -952,7 +954,7 @@
 		gap: 6px;
 		font-size: 13px;
 		font-weight: 600;
-		color: var(--sage-darker);
+		color: var(--navy);
 	}
 
 	.form-field input,
