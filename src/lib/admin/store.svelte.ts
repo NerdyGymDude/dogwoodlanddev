@@ -1,0 +1,17 @@
+import { actions, clients, documents, events, estimates, expenses, invoices, mail, projects, tasks, users, vendors } from './mock-data';
+import type { ActionState, Client, ProjectStatus } from './types';
+
+function clone<T>(value:T):T { return JSON.parse(JSON.stringify(value)); }
+class AdminStore {
+ actions=$state(clone(actions)); clients=$state(clone(clients)); projects=$state(clone(projects)); tasks=$state(clone(tasks)); mail=$state(clone(mail)); documents=$state(clone(documents)); events=$state(clone(events)); vendors=$state(clone(vendors)); estimates=$state(clone(estimates)); invoices=$state(clone(invoices)); expenses=$state(clone(expenses)); users=$state(clone(users));
+ toast=$state('');
+ notify(message:string){ this.toast=message; window.setTimeout(()=>this.toast='',2800); }
+ setAction(id:string,state:ActionState){ const item=this.actions.find(a=>a.id===id); if(item){item.state=state;this.notify(`Action moved to ${state}`);} }
+ toggleDocument(id:string){const d=this.documents.find(x=>x.id===id);if(d){d.shared=!d.shared;this.notify(d.shared?'Document shared with client':'Document made private');}}
+ toggleEvent(id:string){const e=this.events.find(x=>x.id===id);if(e){e.shared=!e.shared;this.notify(e.shared?'Event shared with client':'Event made private');}}
+ updateProject(id:string,status:ProjectStatus,phase:string){const p=this.projects.find(x=>x.id===id);if(p){p.status=status;p.phase=phase;this.notify('Project updated');}}
+ addTask(title:string,projectId?:string){this.tasks.unshift({id:`t${Date.now()}`,title,projectId,due:'Aug 28',priority:'Medium',status:'Open',assignee:'Branch Williams'});this.notify('Task created');}
+ addClient(client:Omit<Client,'id'|'projectIds'|'contacts'>){this.clients.unshift({...client,id:`c${Date.now()}`,projectIds:[],contacts:[]});this.notify('Client added');}
+ markMailRead(id:string){const m=this.mail.find(x=>x.id===id);if(m)m.unread=false;}
+}
+export const adminStore=new AdminStore();

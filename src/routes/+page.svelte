@@ -19,15 +19,13 @@
 				'/service-images/service-1-devaun-park-fountain.webp'
 			],
 			[
-				'/service-images/service-2-onsite-wastewater.webp',
 				'/service-images/service-2-pump-station.webp'
 			],
 			['/service-images/service-3-sand-gravel-mining.webp'],
 			[
 				'/service-images/service-4-beach-houses.webp',
 				'/service-images/service-4-stormwater-installation-1.webp',
-				'/service-images/service-4-stormwater-installation-2.webp',
-				'/service-images/service-4-stormwater-drainage.webp'
+				'/service-images/service-4-stormwater-installation-2.webp'
 			]
 		]
 	};
@@ -696,7 +694,6 @@
 
 				<p>
 					PO Box 93<br />
-					206 Causeway Drive<br />
 					Wrightsville Beach, NC 28480
 				</p>
 
@@ -713,18 +710,6 @@
 			<h3>Email</h3>
 
 			<div class="footer__emails">
-
-				<a href="mailto:branch@dogwoodlanddev.com">
-					branch@dogwoodlanddev.com
-				</a>
-
-				<a href="mailto:permitting@dogwoodlanddev.com">
-					permitting@dogwoodlanddev.com
-				</a>
-
-				<a href="mailto:accounting@dogwoodlanddev.com">
-					accounting@dogwoodlanddev.com
-				</a>
 
 				<a href="mailto:office@dogwoodlanddev.com">
 					office@dogwoodlanddev.com
