@@ -196,29 +196,25 @@ const selectedMailDocument = $derived(`
   selectedMailLoading=true;
   replyText='';
 
-  const formData=new FormData();
-  formData.set('mailbox',message.emailAddress);
-  formData.set('folderId',message.folderId);
-  formData.set('messageId',message.messageId);
+  const params=new URLSearchParams({
+   mailbox:message.emailAddress,
+   folderId:message.folderId,
+   messageId:message.messageId
+  });
 
   try{
-   const response=await fetch('?/readEmail',{
-    method:'POST',
-    body:formData
-   });
+   const response=await fetch(`/api/zoho/message?${params.toString()}`);
 
    const result=await response.json();
 
-   if(!response.ok||result?.type==='failure'){
+   if(!response.ok||!result?.ok){
     selectedMailError=
-     result?.data?.readEmailError ??
+     result?.error ??
      'The email could not be opened.';
     return;
    }
 
-   selectedMailContent=
-    result?.data?.readEmailContent ??
-    '';
+   selectedMailContent=result.content??'';
   }catch{
    selectedMailError='The email could not be opened.';
   }finally{
