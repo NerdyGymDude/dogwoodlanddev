@@ -4,8 +4,19 @@ import {
 	ZOHO_CLIENT_SECRET,
 	ZOHO_REDIRECT_URI
 } from '$env/static/private';
+import { createSupabaseAdminClient } from '$lib/server/integrations/supabase-admin';
 
 import type { RequestHandler } from './$types';
+
+type ZohoTokenResponse = {
+	access_token?: string;
+	refresh_token?: string;
+	expires_in?: number;
+	scope?: string;
+	api_domain?: string;
+	token_type?: string;
+	error?: string;
+};
 
 export const GET: RequestHandler = async ({ url, fetch }) => {
 	const code = url.searchParams.get('code');
@@ -26,22 +37,59 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 		method: 'POST'
 	});
 
-	const result = await response.json();
+	const result = (await response.json()) as ZohoTokenResponse;
 
-	if (!response.ok || result.error) {
-		console.error('Zoho OAuth token exchange failed:', result.error ?? response.status);
+	if (!response.ok || result.error || !result.access_token) {
+		console.error(
+			'Zoho OAuth token exchange failed:',
+			result.error ?? response.status
+		);
+
 		throw error(500, 'Zoho authorization failed.');
 	}
 
-	/*
-	 * Temporary OAuth proof-of-connection route.
-	 *
-	 * IMPORTANT:
-	 * Do not log or return access_token or refresh_token.
-	 * We will add secure token persistence after the OAuth
-	 * round trip has been verified successfully.
-	 */
-	console.info('Zoho OAuth authorization completed successfully.');
+	if (!result.refresh_token) {
+		console.error('Zoho OAuth response did not include a refresh token.');
+		throw error(
+			500,
+			'Zoho did not provide a refresh token. Reauthorization is required.'
+		);
+	}
+
+	const expiresIn = result.expires_in ?? 3600;
+	const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+	const scopes = result.scope
+		? result.scope.split(/[,\s]+/).filter(Boolean)
+		: ['ZohoMail.messages.CREATE'];
+
+	const supabase = createSupabaseAdminClient();
+
+	const { error: databaseError } = await supabase
+		.from('zoho_mailboxes')
+		.update({
+			access_token: result.access_token,
+			refresh_token: result.refresh_token,
+			access_token_expires_at: expiresAt,
+			scopes,
+			connected_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+			is_active: true
+		})
+		.eq('email_address', 'branch@dogwoodlanddev.com');
+
+	if (databaseError) {
+		console.error(
+			'Failed to save Zoho mailbox authorization:',
+			databaseError.message
+		);
+
+		throw error(500, 'Zoho authorization could not be saved.');
+	}
+
+	console.info(
+		'Zoho authorization saved for branch@dogwoodlanddev.com.'
+	);
 
 	throw redirect(303, '/admin?zoho=connected');
 };
