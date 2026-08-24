@@ -18,8 +18,20 @@ type ZohoTokenResponse = {
 	error?: string;
 };
 
-export const GET: RequestHandler = async ({ url, fetch }) => {
+export const GET: RequestHandler = async ({ url, fetch, cookies }) => {
 	const code = url.searchParams.get('code');
+	const mailbox = cookies.get('zoho_connect_mailbox');
+
+	const allowedMailboxes = new Set([
+		'branch@dogwoodlanddev.com',
+		'office@dogwoodlanddev.com',
+		'accounting@dogwoodlanddev.com',
+		'permitting@dogwoodlanddev.com'
+	]);
+
+	if (!mailbox || !allowedMailboxes.has(mailbox)) {
+		throw error(400, 'Zoho mailbox connection session is missing or invalid.');
+	}
 
 	if (!code) {
 		throw error(400, 'Zoho authorization code was not provided.');
@@ -76,7 +88,7 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 			updated_at: new Date().toISOString(),
 			is_active: true
 		})
-		.eq('email_address', 'branch@dogwoodlanddev.com');
+		.eq('email_address', mailbox);
 
 	if (databaseError) {
 		console.error(
@@ -87,9 +99,11 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 		throw error(500, 'Zoho authorization could not be saved.');
 	}
 
-	console.info(
-		'Zoho authorization saved for branch@dogwoodlanddev.com.'
-	);
+	cookies.delete('zoho_connect_mailbox', {
+		path: '/api/zoho'
+	});
+
+	console.info(`Zoho authorization saved for ${mailbox}.`);
 
 	throw redirect(303, '/admin?zoho=connected');
 };
