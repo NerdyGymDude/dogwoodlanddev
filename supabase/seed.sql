@@ -1,0 +1,9 @@
+-- Dogwood Land Development development seed data.
+--
+-- Keep reproducible NON-SECRET development/test data here.
+--
+-- Do not commit:
+-- passwords
+-- access tokens
+-- service-role/secret keys
+-- real client confidential information
