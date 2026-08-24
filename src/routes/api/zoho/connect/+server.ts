@@ -36,7 +36,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 	authorizationUrl.searchParams.set(
 		'scope',
-		'ZohoMail.messages.CREATE,ZohoMail.accounts.READ'
+		'ZohoMail.messages.CREATE,ZohoMail.messages.READ,ZohoMail.accounts.READ'
 	);
 
 	authorizationUrl.searchParams.set(
