@@ -12,6 +12,8 @@
  const nav=[['home','Action Center','⌂'],['clients','Clients','♙'],['projects','Projects','◇'],['inbox','Inbox','✉'],['tasks','Tasks','✓'],['documents','Documents','▱'],['calendar','Calendar','□'],['accounting','Accounting','$'],['vendors','Vendors','♢'],['reports','Reports','⌁'],['settings','Settings','⚙']];
  let view=$state('home'), selectedProject=$state('p1'), selectedClient=$state('c2'), selectedMail=$state('m1'), mailbox=$state('All'), searchOpen=$state(false), query=$state(''), moreOpen=$state(false), modal=$state(''), actionFilter=$state('All');
  let formTitle=$state(''), formName=$state(''), formEmail=$state(''), formPhone=$state(''), formDescription=$state('');
+let formFromEmail=$state('branch@dogwoodlanddev.com');
+let emailSending=$state(false);
  let quickAddOpen=$state(false);
  let quickAddType=$state<AdminRecordType | null>(null);
  const project=$derived(store.projects.find(p=>p.id===selectedProject));
@@ -75,7 +77,65 @@
  function openProject(id:string){selectedProject=id;go('project');}
  function openClient(id:string){selectedClient=id;go('client');}
  function chooseResult(r:{type:string;id:string}){searchOpen=false;query='';if(r.type==='Project')openProject(r.id);else if(r.type==='Client')openClient(r.id);else if(r.type==='Email'){selectedMail=r.id;go('inbox');}else go('documents');}
- function saveModal(){ if(modal==='task'&&formTitle)store.addTask(formTitle,selectedProject); else if(modal==='client'&&formName)store.addClient({name:formName,type:'Company',email:formEmail,phone:formPhone,address:'',notes:formDescription}); else store.notify(`${modal==='email'?'Email queued':'Record saved'} in demo workspace`); modal='';formTitle='';formName='';formEmail='';formPhone='';formDescription=''; }
+ async function saveModal(){
+	if(modal==='email'){
+		emailSending=true;
+
+		const formData=new FormData();
+		formData.set('from',formFromEmail);
+		formData.set('to',formEmail);
+		formData.set('subject',formTitle);
+		formData.set('message',formDescription);
+
+		try{
+			const response=await fetch('?/sendEmail',{
+				method:'POST',
+				body:formData
+			});
+
+			const result=await response.json();
+
+			if(!response.ok||result?.type==='failure'){
+				store.notify(result?.data?.emailError??'Email could not be sent.');
+				return;
+			}
+
+			store.notify(`Email sent from ${formFromEmail}`);
+			modal='';
+			formTitle='';
+			formEmail='';
+			formDescription='';
+		}catch{
+			store.notify('Email could not be sent.');
+		}finally{
+			emailSending=false;
+		}
+
+		return;
+	}
+
+	if(modal==='task'&&formTitle){
+		store.addTask(formTitle,selectedProject);
+	}else if(modal==='client'&&formName){
+		store.addClient({
+			name:formName,
+			type:'Company',
+			email:formEmail,
+			phone:formPhone,
+			address:'',
+			notes:formDescription
+		});
+	}else{
+		store.notify('Record saved in demo workspace');
+	}
+
+	modal='';
+	formTitle='';
+	formName='';
+	formEmail='';
+	formPhone='';
+	formDescription='';
+}
  function openQuickAdd(type:AdminRecordType|null=null){quickAddType=type;quickAddOpen=true;}
  function closeQuickAdd(){quickAddOpen=false;quickAddType=null;}
  function clientRecordFromApi(record:{
@@ -412,7 +472,25 @@
  onsave={saveQuickAdd}
 />
 
-{#if modal}<div class="overlay" onclick={()=>modal=''}><form class="modal" onsubmit={(e)=>{e.preventDefault();saveModal()}} onclick={(e)=>e.stopPropagation()}><button type="button" class="close" onclick={()=>modal=''}>×</button><p class="eyebrow">QUICK ACTION</p><h2>{modal==='quick'?'What would you like to add?':modal==='task'?'Create task':modal==='client'?'Add client':modal==='email'?'Compose email':modal==='upload'?'Upload document':modal==='event'?'New calendar event':modal==='editproject'?'Edit project':`Add ${modal}`}</h2>{#if modal==='quick'}<div class="quick-grid">{#each [['client','♙','Add Client'],['project','◇','Create Project'],['email','✉','Send Email'],['upload','▱','Upload Document'],['task','✓','Create Task'],['note','✎','Add Note']] as q}<button type="button" onclick={()=>modal=q[0]}><i>{q[1]}</i>{q[2]}</button>{/each}</div>{:else if modal==='editproject' && project}<label>Status<select value={project.status} onchange={(e)=>store.updateProject(project.id,e.currentTarget.value as ProjectStatus,project.phase)}><option>Active</option><option>Pending</option><option>Completed</option><option>Cancelled</option></select></label><label>Phase<select value={project.phase} onchange={(e)=>store.updateProject(project.id,project.status,e.currentTarget.value)}>{#each ['Due Diligence','Entitlement','Engineering / Design','Permitting','Construction','Closeout'] as p}<option>{p}</option>{/each}</select></label><div class="suggestion"><strong>Phase-aware suggestion</strong><p>Moving to Permitting can suggest a permit package task, agency contact, and follow-up date. You’ll confirm before anything is created.</p></div><button class="primary" type="submit">Save project</button>{:else}<label>{modal==='client'?'Client or company name':'Title'}{#if modal==='client'}<input required bind:value={formName} placeholder="Client or company name"/>{:else}<input required bind:value={formTitle} placeholder={modal==='email'?'Email subject':modal==='task'?'What needs to be done?':'Enter details'}/>{/if}</label>{#if modal==='client'||modal==='email'}<label>Email<input type="email" bind:value={formEmail} placeholder="name@example.com"/></label>{/if}{#if modal==='client'}<label>Phone<input bind:value={formPhone} placeholder="(910) 555-0000"/></label>{/if}<label>Details<textarea bind:value={formDescription} rows="4" placeholder="Add context or notes…"></textarea></label>{#if modal==='upload'}<label class="upload-zone">⇧<strong>Choose a file</strong><span>PDF, documents, plans, photos, or spreadsheets</span><input type="file"/></label><label>Share setting<select><option>Private (recommended)</option><option>Share with client</option></select></label>{/if}<button class="primary" type="submit">{modal==='email'?'Send email':'Save'}</button>{/if}</form></div>{/if}
+{#if modal}<div class="overlay" onclick={()=>modal=''}><form class="modal" onsubmit={(e)=>{e.preventDefault();saveModal()}} onclick={(e)=>e.stopPropagation()}><button type="button" class="close" onclick={()=>modal=''}>×</button><p class="eyebrow">QUICK ACTION</p><h2>{modal==='quick'?'What would you like to add?':modal==='task'?'Create task':modal==='client'?'Add client':modal==='email'?'Compose email':modal==='upload'?'Upload document':modal==='event'?'New calendar event':modal==='editproject'?'Edit project':`Add ${modal}`}</h2>{#if modal==='quick'}<div class="quick-grid">{#each [['client','♙','Add Client'],['project','◇','Create Project'],['email','✉','Send Email'],['upload','▱','Upload Document'],['task','✓','Create Task'],['note','✎','Add Note']] as q}<button type="button" onclick={()=>modal=q[0]}><i>{q[1]}</i>{q[2]}</button>{/each}</div>{:else if modal==='editproject' && project}<label>Status<select value={project.status} onchange={(e)=>store.updateProject(project.id,e.currentTarget.value as ProjectStatus,project.phase)}><option>Active</option><option>Pending</option><option>Completed</option><option>Cancelled</option></select></label><label>Phase<select value={project.phase} onchange={(e)=>store.updateProject(project.id,project.status,e.currentTarget.value)}>{#each ['Due Diligence','Entitlement','Engineering / Design','Permitting','Construction','Closeout'] as p}<option>{p}</option>{/each}</select></label><div class="suggestion"><strong>Phase-aware suggestion</strong><p>Moving to Permitting can suggest a permit package task, agency contact, and follow-up date. You’ll confirm before anything is created.</p></div><button class="primary" type="submit">Save project</button>{:else}<label>{modal==='client'?'Client or company name':'Title'}{#if modal==='client'}<input required bind:value={formName} placeholder="Client or company name"/>{:else}<input required bind:value={formTitle} placeholder={modal==='email'?'Email subject':modal==='task'?'What needs to be done?':'Enter details'}/>{/if}</label>{#if modal==='email'}
+<label>From
+	<select bind:value={formFromEmail}>
+		<option value="branch@dogwoodlanddev.com">Branch — branch@dogwoodlanddev.com</option>
+		<option value="office@dogwoodlanddev.com">Office — office@dogwoodlanddev.com</option>
+		<option value="accounting@dogwoodlanddev.com">Accounting — accounting@dogwoodlanddev.com</option>
+		<option value="permitting@dogwoodlanddev.com">Permitting — permitting@dogwoodlanddev.com</option>
+	</select>
+</label>
+<label>To
+	<input type="email" required bind:value={formEmail} placeholder="name@example.com"/>
+</label>
+{:else if modal==='client'}
+<label>Email
+	<input type="email" bind:value={formEmail} placeholder="name@example.com"/>
+</label>
+{/if}{#if modal==='client'}<label>Phone<input bind:value={formPhone} placeholder="(910) 555-0000"/></label>{/if}<label>Details<textarea bind:value={formDescription} rows="4" placeholder="Add context or notes…"></textarea></label>{#if modal==='upload'}<label class="upload-zone">⇧<strong>Choose a file</strong><span>PDF, documents, plans, photos, or spreadsheets</span><input type="file"/></label><label>Share setting<select><option>Private (recommended)</option><option>Share with client</option></select></label>{/if}<button class="primary" type="submit" disabled={modal==='email'&&emailSending}>
+	{modal==='email'?(emailSending?'Sending…':'Send email'):'Save'}
+</button>{/if}</form></div>{/if}
 {#if store.toast}<div class="toast">✓ {store.toast}</div>{/if}
 
 <style>
