@@ -198,3 +198,77 @@ export async function sendZohoMail(input: SendZohoMailInput) {
 
 	return result;
 }
+
+export type ZohoInboxMessage = {
+	messageId: string;
+	subject: string;
+	fromAddress: string;
+	sender: string;
+	receivedTime: string | null;
+	summary: string;
+	hasAttachment: boolean;
+};
+
+type ZohoMessageListItem = {
+	messageId?: string | number;
+	subject?: string;
+	fromAddress?: string;
+	sender?: string;
+	receivedTime?: string | number;
+	summary?: string;
+	hasAttachment?: boolean | string;
+};
+
+export async function getZohoInboxMessages(
+	emailAddress: string,
+	limit = 25
+): Promise<ZohoInboxMessage[]> {
+	let mailbox = await getZohoMailbox(emailAddress);
+
+	const accountId =
+		mailbox.zoho_account_id ??
+		(await discoverZohoAccountId(emailAddress));
+
+	mailbox = await getZohoMailbox(emailAddress);
+
+	const response = await fetch(
+		`https://mail.zoho.com/api/accounts/${accountId}/messages/view`,
+		{
+			headers: {
+				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`
+			}
+		}
+	);
+
+	const result = await response.json();
+
+	if (!response.ok) {
+		console.error(
+			'Zoho inbox request failed:',
+			result?.data?.errorCode ??
+				result?.status?.description ??
+				response.status
+		);
+
+		throw new Error(`Zoho could not retrieve ${emailAddress}.`);
+	}
+
+	const messages = Array.isArray(result.data)
+		? (result.data as ZohoMessageListItem[])
+		: [];
+
+	return messages.slice(0, limit).map((message) => ({
+		messageId: String(message.messageId ?? ''),
+		subject: message.subject?.trim() || '(No subject)',
+		fromAddress: message.fromAddress?.trim() || '',
+		sender: message.sender?.trim() || message.fromAddress?.trim() || 'Unknown sender',
+		receivedTime:
+			message.receivedTime === undefined || message.receivedTime === null
+				? null
+				: String(message.receivedTime),
+		summary: message.summary?.trim() || '',
+		hasAttachment:
+			message.hasAttachment === true ||
+			message.hasAttachment === 'true'
+	}));
+}

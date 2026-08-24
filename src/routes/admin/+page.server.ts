@@ -2,7 +2,10 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getClients } from '$lib/server/admin/clients';
 import { getEvents, getProjects, getTasks } from '$lib/server/admin/core';
-import { sendZohoMail } from '$lib/server/integrations/zoho-mail';
+import {
+	getZohoInboxMessages,
+	sendZohoMail
+} from '$lib/server/integrations/zoho-mail';
 
 const allowedMailboxes = new Set([
 	'branch@dogwoodlanddev.com',
@@ -30,11 +33,44 @@ export const load: PageServerLoad = async ({ locals }) => {
 		getEvents(locals.supabase)
 	]);
 
+	const mailboxAddresses = [
+		'branch@dogwoodlanddev.com',
+		'office@dogwoodlanddev.com',
+		'accounting@dogwoodlanddev.com',
+		'permitting@dogwoodlanddev.com'
+	];
+
+	const zohoInboxes = await Promise.all(
+		mailboxAddresses.map(async (emailAddress) => {
+			try {
+				const messages = await getZohoInboxMessages(emailAddress, 25);
+
+				return {
+					emailAddress,
+					messages,
+					error: null
+				};
+			} catch (cause) {
+				console.error(
+					`Unable to load Zoho inbox ${emailAddress}:`,
+					cause instanceof Error ? cause.message : 'Unknown error'
+				);
+
+				return {
+					emailAddress,
+					messages: [],
+					error: 'Inbox could not be loaded.'
+				};
+			}
+		})
+	);
+
 	return {
 		clients,
 		projects,
 		tasks,
-		events
+		events,
+		zohoInboxes
 	};
 };
 
