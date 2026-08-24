@@ -13,7 +13,7 @@ export const GET: RequestHandler = async () => {
 
 	authorizationUrl.searchParams.set(
 		'scope',
-		'ZohoMail.messages.CREATE'
+		'ZohoMail.messages.CREATE,ZohoMail.accounts.READ'
 	);
 
 	authorizationUrl.searchParams.set(
