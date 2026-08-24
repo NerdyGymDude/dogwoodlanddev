@@ -305,12 +305,15 @@ export async function getZohoMessageContent(
 	const result = await response.json();
 
 	if (!response.ok || !result?.data) {
-		console.error(
-			'Zoho message-content request failed:',
-			result?.data?.errorCode ??
-				result?.status?.description ??
-				response.status
-		);
+		console.error('Zoho message-content request failed:', {
+			status: response.status,
+			accountId,
+			folderId,
+			messageId,
+			errorCode: result?.data?.errorCode ?? null,
+			description: result?.status?.description ?? null,
+			response: result
+		});
 
 		throw new Error('Zoho could not retrieve the email contents.');
 	}
