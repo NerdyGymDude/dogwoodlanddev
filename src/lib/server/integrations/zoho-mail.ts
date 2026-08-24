@@ -148,3 +148,53 @@ export async function discoverZohoAccountId(emailAddress: string) {
 
 	return account.accountId;
 }
+
+export type SendZohoMailInput = {
+	from: string;
+	to: string;
+	subject: string;
+	content: string;
+};
+
+export async function sendZohoMail(input: SendZohoMailInput) {
+	let mailbox = await getZohoMailbox(input.from);
+
+	const accountId =
+		mailbox.zoho_account_id ??
+		(await discoverZohoAccountId(input.from));
+
+	mailbox = await getZohoMailbox(input.from);
+
+	const response = await fetch(
+		`https://mail.zoho.com/api/accounts/${accountId}/messages`,
+		{
+			method: 'POST',
+			headers: {
+				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				fromAddress: input.from,
+				toAddress: input.to,
+				subject: input.subject,
+				content: input.content,
+				mailFormat: 'html'
+			})
+		}
+	);
+
+	const result = await response.json();
+
+	if (!response.ok) {
+		console.error(
+			'Zoho send-mail request failed:',
+			result?.data?.errorCode ??
+				result?.status?.description ??
+				response.status
+		);
+
+		throw new Error('Zoho could not send the email.');
+	}
+
+	return result;
+}
