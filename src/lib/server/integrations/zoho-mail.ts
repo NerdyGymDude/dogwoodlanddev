@@ -201,6 +201,7 @@ export async function sendZohoMail(input: SendZohoMailInput) {
 
 export type ZohoInboxMessage = {
 	messageId: string;
+	folderId: string;
 	subject: string;
 	fromAddress: string;
 	sender: string;
@@ -211,6 +212,7 @@ export type ZohoInboxMessage = {
 
 type ZohoMessageListItem = {
 	messageId?: string | number;
+	folderId?: string | number;
 	subject?: string;
 	fromAddress?: string;
 	sender?: string;
@@ -259,6 +261,7 @@ export async function getZohoInboxMessages(
 
 	return messages.slice(0, limit).map((message) => ({
 		messageId: String(message.messageId ?? ''),
+		folderId: String(message.folderId ?? ''),
 		subject: message.subject?.trim() || '(No subject)',
 		fromAddress: message.fromAddress?.trim() || '',
 		sender: message.sender?.trim() || message.fromAddress?.trim() || 'Unknown sender',
@@ -271,4 +274,49 @@ export async function getZohoInboxMessages(
 			message.hasAttachment === true ||
 			message.hasAttachment === 'true'
 	}));
+}
+
+export async function getZohoMessageContent(
+	emailAddress: string,
+	folderId: string,
+	messageId: string
+) {
+	if (!folderId || !messageId) {
+		throw new Error('Zoho folder ID and message ID are required.');
+	}
+
+	let mailbox = await getZohoMailbox(emailAddress);
+
+	const accountId =
+		mailbox.zoho_account_id ??
+		(await discoverZohoAccountId(emailAddress));
+
+	mailbox = await getZohoMailbox(emailAddress);
+
+	const response = await fetch(
+		`https://mail.zoho.com/api/accounts/${accountId}/folders/${folderId}/messages/${messageId}/content?includeBlockContent=true`,
+		{
+			headers: {
+				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`
+			}
+		}
+	);
+
+	const result = await response.json();
+
+	if (!response.ok || !result?.data) {
+		console.error(
+			'Zoho message-content request failed:',
+			result?.data?.errorCode ??
+				result?.status?.description ??
+				response.status
+		);
+
+		throw new Error('Zoho could not retrieve the email contents.');
+	}
+
+	return {
+		messageId: String(result.data.messageId ?? messageId),
+		content: String(result.data.content ?? '')
+	};
 }
