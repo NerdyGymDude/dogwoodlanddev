@@ -36,7 +36,7 @@
 			<input
 				id="project-name"
 				bind:value={value.title}
-				placeholder="Pine Haven Subdivision"
+				placeholder="Project name"
 			/>
 		</FormField>
 

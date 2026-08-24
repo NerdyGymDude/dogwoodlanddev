@@ -1,7 +1,4 @@
-import {
-	ZOHO_CLIENT_ID,
-	ZOHO_CLIENT_SECRET
-} from '$env/static/private';
+import { ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET } from '$env/static/private';
 import { createSupabaseAdminClient } from './supabase-admin';
 
 type ZohoMailbox = {
@@ -60,9 +57,7 @@ export async function getZohoMailbox(emailAddress: string) {
 
 	const { data, error } = await supabase
 		.from('zoho_mailboxes')
-		.select(
-			'email_address, zoho_account_id, access_token, refresh_token, access_token_expires_at'
-		)
+		.select('email_address, zoho_account_id, access_token, refresh_token, access_token_expires_at')
 		.eq('email_address', emailAddress)
 		.single();
 
@@ -80,13 +75,9 @@ export async function getZohoMailbox(emailAddress: string) {
 		? new Date(mailbox.access_token_expires_at).getTime()
 		: 0;
 
-	const needsRefresh =
-		!mailbox.access_token ||
-		expiresAt <= Date.now() + 60_000;
+	const needsRefresh = !mailbox.access_token || expiresAt <= Date.now() + 60_000;
 
-	const accessToken = needsRefresh
-		? await refreshAccessToken(mailbox)
-		: mailbox.access_token!;
+	const accessToken = needsRefresh ? await refreshAccessToken(mailbox) : mailbox.access_token!;
 
 	return {
 		...mailbox,
@@ -102,14 +93,11 @@ type ZohoAccount = {
 export async function discoverZohoAccountId(emailAddress: string) {
 	const mailbox = await getZohoMailbox(emailAddress);
 
-	const response = await fetch(
-		'https://mail.zoho.com/api/accounts',
-		{
-			headers: {
-				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`
-			}
+	const response = await fetch('https://mail.zoho.com/api/accounts', {
+		headers: {
+			Authorization: `Zoho-oauthtoken ${mailbox.access_token}`
 		}
-	);
+	});
 
 	const result = await response.json();
 
@@ -117,15 +105,11 @@ export async function discoverZohoAccountId(emailAddress: string) {
 		throw new Error('Unable to retrieve Zoho mail account information.');
 	}
 
-	const accounts = Array.isArray(result.data)
-		? (result.data as ZohoAccount[])
-		: [];
+	const accounts = Array.isArray(result.data) ? (result.data as ZohoAccount[]) : [];
 
 	const account =
 		accounts.find(
-			(item) =>
-				item.primaryEmailAddress?.toLowerCase() ===
-				emailAddress.toLowerCase()
+			(item) => item.primaryEmailAddress?.toLowerCase() === emailAddress.toLowerCase()
 		) ?? accounts[0];
 
 	if (!account?.accountId) {
@@ -159,38 +143,31 @@ export type SendZohoMailInput = {
 export async function sendZohoMail(input: SendZohoMailInput) {
 	let mailbox = await getZohoMailbox(input.from);
 
-	const accountId =
-		mailbox.zoho_account_id ??
-		(await discoverZohoAccountId(input.from));
+	const accountId = mailbox.zoho_account_id ?? (await discoverZohoAccountId(input.from));
 
 	mailbox = await getZohoMailbox(input.from);
 
-	const response = await fetch(
-		`https://mail.zoho.com/api/accounts/${accountId}/messages`,
-		{
-			method: 'POST',
-			headers: {
-				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				fromAddress: input.from,
-				toAddress: input.to,
-				subject: input.subject,
-				content: input.content,
-				mailFormat: 'html'
-			})
-		}
-	);
+	const response = await fetch(`https://mail.zoho.com/api/accounts/${accountId}/messages`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Zoho-oauthtoken ${mailbox.access_token}`,
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			fromAddress: input.from,
+			toAddress: input.to,
+			subject: input.subject,
+			content: input.content,
+			mailFormat: 'html'
+		})
+	});
 
 	const result = await response.json();
 
 	if (!response.ok) {
 		console.error(
 			'Zoho send-mail request failed:',
-			result?.data?.errorCode ??
-				result?.status?.description ??
-				response.status
+			result?.data?.errorCode ?? result?.status?.description ?? response.status
 		);
 
 		throw new Error('Zoho could not send the email.');
@@ -208,6 +185,7 @@ export type ZohoInboxMessage = {
 	receivedTime: string | null;
 	summary: string;
 	hasAttachment: boolean;
+	isRead: boolean;
 };
 
 type ZohoMessageListItem = {
@@ -219,6 +197,7 @@ type ZohoMessageListItem = {
 	receivedTime?: string | number;
 	summary?: string;
 	hasAttachment?: boolean | string;
+	status?: string | number;
 };
 
 export async function getZohoInboxMessages(
@@ -227,37 +206,28 @@ export async function getZohoInboxMessages(
 ): Promise<ZohoInboxMessage[]> {
 	let mailbox = await getZohoMailbox(emailAddress);
 
-	const accountId =
-		mailbox.zoho_account_id ??
-		(await discoverZohoAccountId(emailAddress));
+	const accountId = mailbox.zoho_account_id ?? (await discoverZohoAccountId(emailAddress));
 
 	mailbox = await getZohoMailbox(emailAddress);
 
-	const response = await fetch(
-		`https://mail.zoho.com/api/accounts/${accountId}/messages/view`,
-		{
-			headers: {
-				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`
-			}
+	const response = await fetch(`https://mail.zoho.com/api/accounts/${accountId}/messages/view`, {
+		headers: {
+			Authorization: `Zoho-oauthtoken ${mailbox.access_token}`
 		}
-	);
+	});
 
 	const result = await response.json();
 
 	if (!response.ok) {
 		console.error(
 			'Zoho inbox request failed:',
-			result?.data?.errorCode ??
-				result?.status?.description ??
-				response.status
+			result?.data?.errorCode ?? result?.status?.description ?? response.status
 		);
 
 		throw new Error(`Zoho could not retrieve ${emailAddress}.`);
 	}
 
-	const messages = Array.isArray(result.data)
-		? (result.data as ZohoMessageListItem[])
-		: [];
+	const messages = Array.isArray(result.data) ? (result.data as ZohoMessageListItem[]) : [];
 
 	return messages.slice(0, limit).map((message) => ({
 		messageId: String(message.messageId ?? ''),
@@ -270,9 +240,8 @@ export async function getZohoInboxMessages(
 				? null
 				: String(message.receivedTime),
 		summary: message.summary?.trim() || '',
-		hasAttachment:
-			message.hasAttachment === true ||
-			message.hasAttachment === 'true'
+		hasAttachment: message.hasAttachment === true || message.hasAttachment === 'true',
+		isRead: String(message.status ?? '0') === '0'
 	}));
 }
 
@@ -287,9 +256,7 @@ export async function getZohoMessageContent(
 
 	let mailbox = await getZohoMailbox(emailAddress);
 
-	const accountId =
-		mailbox.zoho_account_id ??
-		(await discoverZohoAccountId(emailAddress));
+	const accountId = mailbox.zoho_account_id ?? (await discoverZohoAccountId(emailAddress));
 
 	mailbox = await getZohoMailbox(emailAddress);
 
