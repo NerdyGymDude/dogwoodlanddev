@@ -93,3 +93,58 @@ export async function getZohoMailbox(emailAddress: string) {
 		access_token: accessToken
 	};
 }
+
+type ZohoAccount = {
+	accountId?: string;
+	primaryEmailAddress?: string;
+};
+
+export async function discoverZohoAccountId(emailAddress: string) {
+	const mailbox = await getZohoMailbox(emailAddress);
+
+	const response = await fetch(
+		'https://mail.zoho.com/api/accounts',
+		{
+			headers: {
+				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`
+			}
+		}
+	);
+
+	const result = await response.json();
+
+	if (!response.ok) {
+		throw new Error('Unable to retrieve Zoho mail account information.');
+	}
+
+	const accounts = Array.isArray(result.data)
+		? (result.data as ZohoAccount[])
+		: [];
+
+	const account =
+		accounts.find(
+			(item) =>
+				item.primaryEmailAddress?.toLowerCase() ===
+				emailAddress.toLowerCase()
+		) ?? accounts[0];
+
+	if (!account?.accountId) {
+		throw new Error(`No Zoho Mail account ID was found for ${emailAddress}.`);
+	}
+
+	const supabase = createSupabaseAdminClient();
+
+	const { error } = await supabase
+		.from('zoho_mailboxes')
+		.update({
+			zoho_account_id: account.accountId,
+			updated_at: new Date().toISOString()
+		})
+		.eq('email_address', emailAddress);
+
+	if (error) {
+		throw new Error(`Unable to save Zoho account ID: ${error.message}`);
+	}
+
+	return account.accountId;
+}
