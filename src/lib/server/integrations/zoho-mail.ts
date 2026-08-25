@@ -241,7 +241,7 @@ export async function getZohoInboxMessages(
 				: String(message.receivedTime),
 		summary: message.summary?.trim() || '',
 		hasAttachment: message.hasAttachment === true || message.hasAttachment === 'true',
-		isRead: String(message.status ?? '0') === '0'
+		isRead: String(message.status ?? '1') === '1'
 	}));
 }
 
