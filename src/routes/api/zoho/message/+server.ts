@@ -4,6 +4,7 @@ import {
 	getZohoMessageContent,
 	markZohoMessageRead
 } from '$lib/server/integrations/zoho-mail';
+import { requireActiveStaff } from '$lib/server/admin/authorization';
 
 const allowedMailboxes = new Set([
 	'branch@dogwoodlanddev.com',
@@ -13,14 +14,7 @@ const allowedMailboxes = new Set([
 ]);
 
 export const GET: RequestHandler = async ({ url, locals }) => {
-	const { user } = await locals.safeGetSession();
-
-	if (!user) {
-		return json(
-			{ ok: false, error: 'You must be signed in to read email.' },
-			{ status: 401 }
-		);
-	}
+	await requireActiveStaff(locals);
 
 	const mailbox = (url.searchParams.get('mailbox') ?? '')
 		.trim()

@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
+import { getActiveStaff } from '$lib/server/admin/authorization';
 
 export const actions: Actions = {
 	default: async ({ request, locals }) => {
@@ -23,6 +24,17 @@ export const actions: Actions = {
 		if (error) {
 			return fail(400, {
 				message: 'The email address or password is incorrect.',
+				email
+			});
+		}
+
+		const authorization = await getActiveStaff(locals);
+
+		if (!authorization.authorized) {
+			await locals.supabase.auth.signOut();
+
+			return fail(403, {
+				message: 'This account does not have active staff access.',
 				email
 			});
 		}

@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getZohoInboxMessages } from '$lib/server/integrations/zoho-mail';
+import { requireActiveStaff } from '$lib/server/admin/authorization';
 
 const mailboxAddresses = [
 	'branch@dogwoodlanddev.com',
@@ -10,14 +11,7 @@ const mailboxAddresses = [
 ];
 
 export const GET: RequestHandler = async ({ locals }) => {
-	const { user } = await locals.safeGetSession();
-
-	if (!user) {
-		return json(
-			{ ok: false, error: 'You must be signed in to read email.' },
-			{ status: 401 }
-		);
-	}
+	await requireActiveStaff(locals);
 
 	const zohoInboxes = await Promise.all(
 		mailboxAddresses.map(async (emailAddress) => {

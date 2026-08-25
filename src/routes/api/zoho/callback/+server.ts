@@ -5,6 +5,8 @@ import {
 	ZOHO_REDIRECT_URI
 } from '$env/static/private';
 import { createSupabaseAdminClient } from '$lib/server/integrations/supabase-admin';
+import { requireActiveStaff } from '$lib/server/admin/authorization';
+import { statesMatch } from '$lib/server/integrations/zoho-oauth-state';
 
 import type { RequestHandler } from './$types';
 
@@ -18,8 +20,13 @@ type ZohoTokenResponse = {
 	error?: string;
 };
 
-export const GET: RequestHandler = async ({ url, fetch, cookies }) => {
+export const GET: RequestHandler = async ({ url, fetch, cookies, locals }) => {
+	const { user } = await requireActiveStaff(locals);
+
 	const code = url.searchParams.get('code');
+	const returnedState = url.searchParams.get('state');
+	const expectedState = cookies.get('zoho_oauth_state');
+	const initiatingUser = cookies.get('zoho_oauth_user');
 	const mailbox = cookies.get('zoho_connect_mailbox');
 
 	const allowedMailboxes = new Set([
@@ -32,6 +39,23 @@ export const GET: RequestHandler = async ({ url, fetch, cookies }) => {
 	if (!mailbox || !allowedMailboxes.has(mailbox)) {
 		throw error(400, 'Zoho mailbox connection session is missing or invalid.');
 	}
+
+	if (
+		!returnedState ||
+		!expectedState ||
+		!initiatingUser ||
+		!statesMatch(expectedState, returnedState) ||
+		!statesMatch(initiatingUser, user.id)
+	) {
+		throw error(400, 'Zoho OAuth state is missing or invalid.');
+	}
+
+	cookies.delete('zoho_oauth_state', {
+		path: '/api/zoho'
+	});
+	cookies.delete('zoho_oauth_user', {
+		path: '/api/zoho'
+	});
 
 	if (!code) {
 		throw error(400, 'Zoho authorization code was not provided.');

@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getClients } from '$lib/server/admin/clients';
 import { getEvents, getProjects, getTasks } from '$lib/server/admin/core';
+import { requireActiveStaff } from '$lib/server/admin/authorization';
 import {
 	getZohoInboxMessages,
 	sendZohoMail
@@ -15,16 +16,7 @@ const allowedMailboxes = new Set([
 ]);
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const { user } = await locals.safeGetSession();
-
-	if (!user) {
-		return {
-			clients: [],
-			projects: [],
-			tasks: [],
-			events: []
-		};
-	}
+	await requireActiveStaff(locals);
 
 	const [clients, projects, tasks, events] = await Promise.all([
 		getClients(locals.supabase),
@@ -76,13 +68,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
 	sendEmail: async ({ request, locals }) => {
-		const { user } = await locals.safeGetSession();
-
-		if (!user) {
-			return fail(401, {
-				emailError: 'You must be signed in to send email.'
-			});
-		}
+		await requireActiveStaff(locals);
 
 		const formData = await request.formData();
 

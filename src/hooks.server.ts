@@ -34,9 +34,20 @@ export const handle: Handle = async ({ event, resolve }) => {
 		};
 	};
 
-	return resolve(event, {
+	const response = await resolve(event, {
 		filterSerializedResponseHeaders(name) {
 			return name === 'content-range' || name === 'x-supabase-api-version';
 		}
 	});
+
+	if (
+		event.url.pathname === '/admin' ||
+		event.url.pathname.startsWith('/admin/') ||
+		event.url.pathname === '/api' ||
+		event.url.pathname.startsWith('/api/')
+	) {
+		response.headers.set('cache-control', 'private, no-store');
+	}
+
+	return response;
 };
