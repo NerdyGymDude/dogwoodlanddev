@@ -314,10 +314,8 @@ export async function markZohoMessageRead(
 				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`,
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify({
-				mode: 'markAsRead',
-				messageId: [messageId]
-			})
+			body: `{"mode":"markAsRead","messageId":[${messageId}]}`
+
 		}
 	);
 
