@@ -9,19 +9,24 @@ export const adminNavigation: AdminNavItem[] = [
 	{ id: 'clients', label: 'Clients', icon: '♙' },
 	{ id: 'projects', label: 'Projects', icon: '◇' },
 	{ id: 'inbox', label: 'Inbox', icon: '✉' },
-	{ id: 'tasks', label: 'Tasks', icon: '✓' },
-	{ id: 'documents', label: 'Documents', icon: '▱' },
 	{ id: 'calendar', label: 'Calendar', icon: '□' },
 	{ id: 'accounting', label: 'Accounting', icon: '$' },
-	{ id: 'vendors', label: 'Vendors', icon: '♢' },
 	{ id: 'reports', label: 'Reports', icon: '⌁' },
 	{ id: 'settings', label: 'Settings', icon: '⚙' }
 ];
 
-export const mobilePrimaryNavigation = adminNavigation.filter((item) =>
-	['home', 'inbox', 'projects', 'clients'].includes(item.id)
-);
+const navigationById = new Map(adminNavigation.map((item) => [item.id, item]));
 
-export const mobileMoreNavigation = adminNavigation.filter(
-	(item) => !['home', 'inbox', 'projects', 'clients'].includes(item.id)
-);
+export const mobilePrimaryNavigation: AdminNavItem[] = [
+	{ ...navigationById.get('home')!, label: 'Home' },
+	navigationById.get('inbox')!,
+	navigationById.get('calendar')!,
+	navigationById.get('projects')!
+];
+
+export const mobileMoreNavigation: AdminNavItem[] = [
+	navigationById.get('clients')!,
+	navigationById.get('accounting')!,
+	navigationById.get('reports')!,
+	navigationById.get('settings')!
+];

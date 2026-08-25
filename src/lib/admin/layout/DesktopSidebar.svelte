@@ -26,9 +26,14 @@
 		<span>ADMIN PORTAL</span>
 	</a>
 
-	<nav>
+	<nav aria-label="Admin sections">
 		{#each adminNavigation as item}
-			<button class:active={isActive(item.id)} onclick={() => ongo(item.id)}>
+			<button
+				type="button"
+				class:active={isActive(item.id)}
+				aria-current={isActive(item.id) ? 'page' : undefined}
+				onclick={() => ongo(item.id)}
+			>
 				<i>{item.icon}</i>
 				{item.label}
 

@@ -5,6 +5,7 @@ body {
 	margin: 0;
 	background: #f4f5f2;
 	color: #243044;
+	overflow-x: hidden;
 	font-family:
 		Inter,
 		-apple-system,
@@ -23,6 +24,7 @@ button {
 }
 .app {
 	min-height: 100vh;
+	min-height: 100dvh;
 }
 .sidebar {
 	position: fixed;
@@ -139,6 +141,8 @@ button {
 .main {
 	margin-left: 244px;
 	min-height: 100vh;
+	min-height: 100dvh;
+	min-width: 0;
 }
 .topbar {
 	height: 70px;
@@ -1448,7 +1452,8 @@ button {
 }
 .bottom-nav,
 .fab,
-.more-menu {
+.more-menu,
+.more-backdrop {
 	display: none;
 }
 .overlay {
@@ -1620,15 +1625,21 @@ button {
 	box-shadow: 0 8px 30px #0003;
 }
 @media (max-width: 900px) {
+	.app {
+		width: 100%;
+		overflow-x: clip;
+	}
 	.sidebar {
 		display: none;
 	}
 	.main {
 		margin: 0;
+		width: 100%;
 	}
 	.topbar {
-		height: 58px;
-		padding: 0 15px;
+		height: calc(58px + env(safe-area-inset-top, 0px));
+		padding: env(safe-area-inset-top, 0px) max(15px, env(safe-area-inset-right, 0px)) 0
+			max(15px, env(safe-area-inset-left, 0px));
 	}
 	.mobile-brand {
 		display: block;
@@ -1661,7 +1672,11 @@ button {
 		padding: 0;
 	}
 	.content {
-		padding: 24px 16px 105px;
+		width: 100%;
+		min-width: 0;
+		padding: 24px max(16px, env(safe-area-inset-right, 0px))
+			calc(92px + env(safe-area-inset-bottom, 0px))
+			max(16px, env(safe-area-inset-left, 0px));
 	}
 	.bottom-nav {
 		position: fixed;
@@ -1669,8 +1684,10 @@ button {
 		bottom: 0;
 		left: 0;
 		right: 0;
-		height: 70px;
-		padding-bottom: env(safe-area-inset-bottom);
+		height: calc(64px + env(safe-area-inset-bottom, 0px));
+		padding-right: env(safe-area-inset-right, 0px);
+		padding-bottom: env(safe-area-inset-bottom, 0px);
+		padding-left: env(safe-area-inset-left, 0px);
 		background: white;
 		border-top: 1px solid #dfe3df;
 		z-index: 50;
@@ -1685,7 +1702,10 @@ button {
 		align-items: center;
 		justify-content: center;
 		gap: 3px;
-		font-size: 9px;
+		min-width: 0;
+		min-height: 56px;
+		font-size: 10px;
+		font-weight: 650;
 		color: #7d878d;
 		position: relative;
 	}
@@ -1696,6 +1716,12 @@ button {
 	}
 	.bottom-nav button.active {
 		color: #3e5d38;
+	}
+	.bottom-nav button:focus-visible,
+	.more-menu button:focus-visible,
+	.fab:focus-visible {
+		outline: 3px solid #91a785;
+		outline-offset: -3px;
 	}
 	.bottom-nav b {
 		position: absolute;
@@ -1712,7 +1738,7 @@ button {
 		place-items: center;
 		position: fixed;
 		right: 17px;
-		bottom: 84px;
+		bottom: calc(76px + env(safe-area-inset-bottom, 0px));
 		width: 49px;
 		height: 49px;
 		border-radius: 50%;
@@ -1720,34 +1746,102 @@ button {
 		background: #203854;
 		color: white;
 		font-size: 25px;
-		z-index: 40;
+		z-index: 48;
 		box-shadow: 0 6px 20px #15294255;
 	}
 	.more-menu {
-		display: grid;
+		display: block;
 		position: fixed;
-		right: 10px;
-		bottom: 72px;
-		width: 210px;
+		right: max(12px, env(safe-area-inset-right, 0px));
+		bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+		left: max(12px, env(safe-area-inset-left, 0px));
+		width: auto;
+		max-width: 430px;
+		max-height: min(70dvh, 560px);
+		margin-left: auto;
 		background: white;
 		border: 1px solid #dfe3df;
-		border-radius: 10px;
-		padding: 8px;
-		z-index: 55;
-		box-shadow: 0 12px 35px #17253d30;
-		grid-template-columns: 1fr 1fr;
+		border-radius: 16px;
+		padding: 8px 12px 12px;
+		z-index: 62;
+		box-shadow: 0 20px 55px #17253d45;
+		overflow-y: auto;
 	}
-	.more-menu button {
+	.more-menu:focus {
+		outline: none;
+	}
+	.more-menu header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		min-height: 68px;
+		padding: 4px 4px 6px 8px;
+		border-bottom: 1px solid #e8ebe7;
+	}
+	.more-menu header p {
+		margin: 0 0 3px;
+		color: #718667;
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.14em;
+	}
+	.more-menu header h2 {
+		margin: 0;
+		font-family: Georgia, serif;
+		font-size: 24px;
+		color: #203049;
+	}
+	.more-menu header > button {
+		width: 44px;
+		height: 44px;
+		border: 0;
+		border-radius: 50%;
+		background: #f1f4ef;
+		font-size: 24px;
+	}
+	.more-menu nav {
+		display: grid;
+		gap: 4px;
+		padding-top: 8px;
+	}
+	.more-menu nav button {
 		border: 0;
 		background: white;
-		padding: 12px 8px;
-		border-radius: 6px;
+		min-height: 56px;
+		padding: 8px 12px;
+		border-radius: 10px;
 		text-align: left;
-		font-size: 10px;
+		font-size: 14px;
+		font-weight: 700;
+		display: grid;
+		grid-template-columns: 34px 1fr auto;
+		align-items: center;
+		gap: 8px;
+	}
+	.more-menu nav button.active {
+		background: #edf2ea;
+		color: #365332;
 	}
 	.more-menu i {
 		font-style: normal;
-		margin-right: 6px;
+		font-size: 20px;
+		text-align: center;
+	}
+	.more-menu nav b {
+		font-size: 16px;
+		font-weight: 400;
+		color: #859080;
+	}
+	.more-backdrop {
+		display: block;
+		position: fixed;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		border: 0;
+		background: #17253d66;
+		z-index: 60;
+		cursor: default;
 	}
 	.cards {
 		grid-template-columns: 1fr 1fr;
@@ -1972,7 +2066,7 @@ button {
 	}
 	.toast {
 		right: 15px;
-		bottom: 85px;
+		bottom: calc(76px + env(safe-area-inset-bottom, 0px));
 		left: 15px;
 		text-align: center;
 	}
