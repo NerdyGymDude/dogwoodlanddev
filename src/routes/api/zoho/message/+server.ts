@@ -50,7 +50,14 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 			messageId
 		);
 
-		await markZohoMessageRead(mailbox, messageId);
+		try {
+		        await markZohoMessageRead(mailbox, messageId);
+		} catch (cause) {
+		        console.error(
+		                `Zoho read-state update failed for ${mailbox}:`,
+		                cause instanceof Error ? cause.message : 'Unknown error'
+		        );
+		}
 
 		return json({
 			ok: true,
