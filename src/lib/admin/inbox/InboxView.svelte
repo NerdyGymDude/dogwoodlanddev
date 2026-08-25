@@ -100,6 +100,20 @@
 		onmailchange(zohoMail, unreadCount);
 	});
 
+	function formatZohoTime(value: string | null) {
+		if (!value) return '';
+
+		const numeric = Number(value);
+		const date = Number.isFinite(numeric) ? new Date(numeric) : new Date(value);
+
+		if (Number.isNaN(date.getTime())) return '';
+
+		return new Intl.DateTimeFormat('en-US', {
+			hour: 'numeric',
+			minute: '2-digit'
+		}).format(date);
+	}
+
 	function formatZohoReceived(value: string | null) {
 		if (!value) return '';
 
@@ -305,7 +319,10 @@
 							{#if !m.isRead}<i class="unread-dot" aria-hidden="true"></i>{/if}
 							{m.sender}
 						</strong>
-						<time>{formatZohoReceived(m.receivedTime)}</time>
+						<time>
+							<span>{formatZohoReceived(m.receivedTime)}</span>
+							<small>{formatZohoTime(m.receivedTime)}</small>
+						</time>
 					</div>
 
 					<h3 class:unread-subject={!m.isRead}>{m.subject}</h3>

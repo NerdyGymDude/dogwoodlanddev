@@ -1,6 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getZohoMessageContent } from '$lib/server/integrations/zoho-mail';
+import {
+	getZohoMessageContent,
+	markZohoMessageRead
+} from '$lib/server/integrations/zoho-mail';
 
 const allowedMailboxes = new Set([
 	'branch@dogwoodlanddev.com',
@@ -46,6 +49,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 			folderId,
 			messageId
 		);
+
+		await markZohoMessageRead(mailbox, messageId);
 
 		return json({
 			ok: true,
