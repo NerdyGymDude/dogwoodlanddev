@@ -66,6 +66,14 @@
 	let inboxSearchMessages = $state<InboxSearchMessage[]>([]);
 	let inboxUnreadCount = $state(0);
 
+        const urgentNotificationCount = $derived(
+                store.actions.filter(
+                        (action) =>
+                                action.state !== 'Done' &&
+                                action.priority === 'High'
+                ).length
+        );
+
 	const project = $derived(store.projects.find((item) => item.id === selectedProject));
 	const client = $derived(store.clients.find((item) => item.id === selectedClient));
 
@@ -417,6 +425,7 @@
                         records={searchableRecords}
                         onselect={chooseComponentSearchResult}
                         onquickadd={() => openQuickAdd()}
+                        notificationCount={urgentNotificationCount}
                         onnotify={() => store.notify('No new urgent notifications')}
                 />
 

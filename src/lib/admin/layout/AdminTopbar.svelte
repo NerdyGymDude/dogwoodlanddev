@@ -10,12 +10,14 @@
 		records,
 		onselect,
 		onquickadd,
-		onnotify
+		onnotify,
+		notificationCount
 	}: {
 		records: SearchRecord[];
 		onselect: (result: SearchRecord) => void;
 		onquickadd: () => void;
 		onnotify: () => void;
+		notificationCount: number;
 	} = $props();
 
 	let searchOpen = $state(false);
@@ -48,7 +50,12 @@
 	</button>
 
 	<div class="top-actions">
-		<button onclick={onnotify}>♢<em>3</em></button>
+		<button onclick={onnotify}>
+                        ♢
+                        {#if notificationCount > 0}
+                                <em>{notificationCount}</em>
+                        {/if}
+                </button>
 		<button class="quick" onclick={onquickadd}>
 			＋ <span>Quick add</span>
 		</button>
