@@ -292,43 +292,53 @@ export async function getZohoMessageContent(
 }
 
 export async function markZohoMessageRead(
-	emailAddress: string,
-	messageId: string
+        emailAddress: string,
+        messageId: string
 ) {
-	if (!messageId) {
-		throw new Error('Zoho message ID is required.');
-	}
+        if (!messageId) {
+                throw new Error('Zoho message ID is required.');
+        }
 
-	let mailbox = await getZohoMailbox(emailAddress);
+        let mailbox = await getZohoMailbox(emailAddress);
 
-	const accountId =
-		mailbox.zoho_account_id ?? (await discoverZohoAccountId(emailAddress));
+        const accountId =
+                mailbox.zoho_account_id ?? (await discoverZohoAccountId(emailAddress));
 
-	mailbox = await getZohoMailbox(emailAddress);
+        mailbox = await getZohoMailbox(emailAddress);
 
-	const response = await fetch(
-		`https://mail.zoho.com/api/accounts/${accountId}/updatemessage`,
-		{
-			method: 'PUT',
-			headers: {
-				Authorization: `Zoho-oauthtoken ${mailbox.access_token}`,
-				'Content-Type': 'application/json'
-			},
-			body: `{"mode":"markAsRead","messageId":[${messageId}]}`
+        const response = await fetch(
+                `https://mail.zoho.com/api/accounts/${accountId}/updatemessage`,
+                {
+                        method: 'PUT',
+                        headers: {
+                                Authorization: `Zoho-oauthtoken ${mailbox.access_token}`,
+                                'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                                mode: 'markAsRead',
+                                messageId: [messageId]
+                        })
+                }
+        );
 
-		}
-	);
+        const result = await response.json().catch(() => null);
 
-	if (!response.ok) {
-		const result = await response.json().catch(() => null);
+        console.log('Zoho mark-as-read response:', {
+                httpStatus: response.status,
+                mailbox: emailAddress,
+                accountId,
+                messageId,
+                zohoStatus: result?.status ?? null,
+                zohoData: result?.data ?? null
+        });
 
-		console.error('Zoho mark-as-read request failed:', {
-			status: response.status,
-			messageId,
-			errorCode: result?.data?.errorCode ?? null,
-			description: result?.status?.description ?? null
-		});
-
-		throw new Error('Zoho could not mark the email as read.');
-	}
+        if (
+                !response.ok ||
+                result?.status?.code !== 200 ||
+                result?.status?.description !== 'success'
+        ) {
+                throw new Error(
+                        `Zoho mark-as-read failed: ${result?.status?.description ?? response.status}`
+                );
+        }
 }
