@@ -15,12 +15,17 @@ export function createSupabaseServerClient(event: RequestEvent) {
 					return event.cookies.getAll();
 				},
 				setAll(cookiesToSet) {
-					cookiesToSet.forEach(({ name, value, options }) => {
-						event.cookies.set(name, value, {
-							...options,
-							path: '/'
+					try {
+						cookiesToSet.forEach(({ name, value, options }) => {
+							event.cookies.set(name, value, {
+								...options,
+								path: '/'
+							});
 						});
-					});
+					} catch {
+						// The response may already have been generated.
+						// In that case SvelteKit can no longer write refreshed auth cookies.
+					}
 				}
 			}
 		}

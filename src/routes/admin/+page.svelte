@@ -440,6 +440,23 @@
                                         onopenproject={openProject}
                                         onemail={() => (modal = 'email')}
                                         onedit={() => (modal = 'editclient')}
+                                        onremove={async () => {
+                                                if (!confirm(`Remove ${client.name}?`)) return;
+
+                                                const response = await fetch(
+                                                        `/admin/api/clients?id=${encodeURIComponent(client.id)}`,
+                                                        { method: 'DELETE' }
+                                                );
+
+                                                if (!response.ok) {
+                                                        store.notify('Unable to remove client');
+                                                        return;
+                                                }
+
+                                                store.removePersistedClient(client.id);
+                                                store.notify(`${client.name} removed`);
+                                                go('clients');
+                                        }}
                                         oncreateproject={() => openQuickAdd('project')}
                                 />
                         {:else if view === 'projects'}

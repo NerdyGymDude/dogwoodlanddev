@@ -86,6 +86,9 @@ class AdminStore {
 	loadPersistedClients(clients: Client[]) {
 		for (const client of [...clients].reverse()) this.addPersistedClient(client);
 	}
+	removePersistedClient(id: string) {
+		this.clients = this.clients.filter((client) => client.id !== id);
+	}
 	addPersistedProject(project: any) {
 		const existing = this.projects.findIndex((x) => x.id === project.id);
 		if (existing >= 0) this.projects[existing] = project;

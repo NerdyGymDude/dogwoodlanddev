@@ -8,6 +8,7 @@
 		onopenproject,
 		onemail,
 		onedit,
+		onremove,
 		oncreateproject
 	}: {
 		client: Client;
@@ -15,6 +16,7 @@
 		onopenproject: (id: string) => void;
 		onemail: () => void;
 		onedit: () => void;
+		onremove: () => void;
 		oncreateproject: () => void;
 	} = $props();
 </script>
@@ -39,6 +41,7 @@
 	<div class="hero-actions">
 		<button onclick={onemail}>✉ Email</button>
 		<button class="primary" onclick={onedit}>Edit client</button>
+                <button onclick={onremove}>Remove</button>
 	</div>
 </div>
 
