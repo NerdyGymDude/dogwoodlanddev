@@ -164,6 +164,18 @@
 			}
 
 			selectedMailContent = result.content ?? '';
+
+                        if (!message.isRead) {
+                                liveZohoInboxes = liveZohoInboxes.map((inbox) => ({
+                                        ...inbox,
+                                        messages: inbox.messages.map((item) =>
+                                                inbox.emailAddress === message.emailAddress &&
+                                                item.messageId === message.messageId
+                                                        ? { ...item, isRead: true }
+                                                        : item
+                                        )
+                                }));
+                        }
 		} catch {
 			selectedMailError = 'The email could not be opened.';
 		} finally {
