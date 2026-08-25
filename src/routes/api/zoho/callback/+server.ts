@@ -68,7 +68,46 @@ export const GET: RequestHandler = async ({ url, fetch, cookies }) => {
 		);
 	}
 
-	const expiresIn = result.expires_in ?? 3600;
+	const accountsResponse = await fetch(
+                'https://mail.zoho.com/api/accounts',
+                {
+                        headers: {
+                                Authorization: `Zoho-oauthtoken ${result.access_token}`
+                        }
+                }
+        );
+
+        const accountsResult = (await accountsResponse.json()) as {
+                data?: Array<{
+                        accountId?: string | number;
+                        primaryEmailAddress?: string;
+                }>;
+        };
+
+        if (!accountsResponse.ok) {
+                throw error(500, 'Zoho mailbox identity could not be verified.');
+        }
+
+        const connectedAccount = Array.isArray(accountsResult.data)
+                ? accountsResult.data.find(
+                                (account) =>
+                                        account.primaryEmailAddress?.toLowerCase() ===
+                                        mailbox.toLowerCase()
+                        )
+                : undefined;
+
+        if (!connectedAccount?.accountId) {
+                console.error(`Zoho OAuth identity mismatch. Expected ${mailbox}.`);
+
+                throw error(
+                        400,
+                        `Zoho signed in with a different account. Sign in to ${mailbox} and try again.`
+                );
+        }
+
+        const zohoAccountId = String(connectedAccount.accountId);
+
+        const expiresIn = result.expires_in ?? 3600;
 	const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
 	const scopes = result.scope
@@ -80,7 +119,8 @@ export const GET: RequestHandler = async ({ url, fetch, cookies }) => {
 	const { error: databaseError } = await supabase
 		.from('zoho_mailboxes')
 		.update({
-			access_token: result.access_token,
+			zoho_account_id: zohoAccountId,
+                        access_token: result.access_token,
 			refresh_token: result.refresh_token,
 			access_token_expires_at: expiresAt,
 			scopes,

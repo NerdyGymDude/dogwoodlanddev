@@ -110,7 +110,7 @@ export async function discoverZohoAccountId(emailAddress: string) {
 	const account =
 		accounts.find(
 			(item) => item.primaryEmailAddress?.toLowerCase() === emailAddress.toLowerCase()
-		) ?? accounts[0];
+		);
 
 	if (!account?.accountId) {
 		throw new Error(`No Zoho Mail account ID was found for ${emailAddress}.`);
