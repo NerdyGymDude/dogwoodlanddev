@@ -1,0 +1,158 @@
+import type {
+	AdminFormBase,
+	ClientFormData,
+	ContactFormData,
+	DocumentFormData,
+	EstimateFormData,
+	EventFormData,
+	ExpenseFormData,
+	InvoiceFormData,
+	NoteFormData,
+	ProjectFormData,
+	TaskFormData
+} from './types';
+
+function today() {
+	return new Date().toISOString().slice(0, 10);
+}
+
+export function createBaseForm(): AdminFormBase {
+	return {
+		clientId: '',
+		projectId: '',
+		title: '',
+		description: '',
+		date: today(),
+		status: 'new',
+		assignedTo: '',
+		notes: '',
+		clientVisible: false,
+		attachments: []
+	};
+}
+
+export function createClientForm(): ClientFormData {
+	return {
+		companyName: '',
+		status: 'new',
+
+		primaryContactName: '',
+		primaryContactPhone: '',
+		primaryContactEmail: '',
+
+		secondaryContactName: '',
+		secondaryContactPhone: '',
+		secondaryContactEmail: '',
+
+		tertiaryContactName: '',
+		tertiaryContactPhone: '',
+		tertiaryContactEmail: '',
+
+		address: '',
+		city: '',
+		state: 'NC',
+		zip: '',
+
+		notes: '',
+		attachments: []
+	};
+}
+
+export function createContactForm(): ContactFormData {
+	return {
+		...createBaseForm(),
+		firstName: '',
+		lastName: '',
+		company: '',
+		email: '',
+		phone: '',
+		jobTitle: ''
+	};
+}
+
+export function createProjectForm(): ProjectFormData {
+	return {
+		...createBaseForm(),
+		projectNumber: '',
+		projectType: '',
+		address: '',
+		city: '',
+		state: 'NC',
+		zip: '',
+		startDate: today(),
+		targetCompletionDate: '',
+		budget: ''
+	};
+}
+
+export function createTaskForm(): TaskFormData {
+	return {
+		...createBaseForm(),
+		dueDate: '',
+		priority: 'normal'
+	};
+}
+
+export function createEstimateForm(): EstimateFormData {
+	return {
+		...createBaseForm(),
+		status: 'draft',
+		estimateNumber: '',
+		validThrough: '',
+		lineItems: [],
+		discount: '',
+		taxRate: 0
+	};
+}
+
+export function createInvoiceForm(): InvoiceFormData {
+	return {
+		...createBaseForm(),
+		status: 'draft',
+		invoiceNumber: '',
+		dueDate: '',
+		lineItems: [],
+		discount: '',
+		taxRate: 0,
+		paymentStatus: 'unpaid'
+	};
+}
+
+export function createExpenseForm(): ExpenseFormData {
+	return {
+		...createBaseForm(),
+		vendorId: '',
+		amount: '',
+		category: '',
+		paymentMethod: '',
+		expenseDate: today(),
+		receiptFile: null
+	};
+}
+
+export function createDocumentForm(): DocumentFormData {
+	return {
+		...createBaseForm(),
+		documentType: '',
+		file: null
+	};
+}
+
+export function createEventForm(): EventFormData {
+	return {
+		...createBaseForm(),
+		startDate: today(),
+		startTime: '',
+		endDate: today(),
+		endTime: '',
+		location: '',
+		eventType: ''
+	};
+}
+
+export function createNoteForm(): NoteFormData {
+	return {
+		...createBaseForm(),
+		noteType: ''
+	};
+}
