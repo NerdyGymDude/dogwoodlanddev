@@ -150,6 +150,8 @@
 
 	let showProjectForm = $state(false);
 	let projectFormSubmitted = $state(false);
+	let projectFormSending = $state(false);
+	let projectFormError = $state('');
 
 	/**
 	 * @typedef {Object} ProjectInquiryForm
@@ -172,6 +174,7 @@
 	function openProjectForm() {
 		showProjectForm = true;
 		projectFormSubmitted = false;
+		projectFormError = '';
 		projectInquiryForm = {
 			businessName: '',
 			firstName: '',
@@ -186,20 +189,35 @@
 	}
 
 	/** @param {SubmitEvent} event */
-	function handleProjectFormSubmit(event) {
+	async function handleProjectFormSubmit(event) {
 		event.preventDefault();
+		if (projectFormSending) return;
+		projectFormSending = true;
+		projectFormError = '';
+		const formData = new FormData(/** @type {HTMLFormElement} */ (event.currentTarget));
 		const payload = {
 			businessName: projectInquiryForm.businessName,
 			firstName: projectInquiryForm.firstName,
 			lastName: projectInquiryForm.lastName,
 			phone: projectInquiryForm.phone,
-			email: projectInquiryForm.email
+			email: projectInquiryForm.email,
+			address: String(formData.get('address') ?? ''),
+			preferredContact: String(formData.get('preferredContact') ?? ''),
+			projectType: String(formData.get('projectType') ?? ''),
+			message: String(formData.get('message') ?? '')
 		};
-		void payload;
-
-		// TODO:
-		// Connect this to the website backend/email handler.
-		projectFormSubmitted = true;
+		try {
+			const response = await fetch('/api/project-inquiries', {
+				method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload)
+			});
+			const result = await response.json();
+			if (!response.ok) throw new Error(result.error || 'Unable to submit your inquiry.');
+			projectFormSubmitted = true;
+		} catch (error) {
+			projectFormError = error instanceof Error ? error.message : 'Unable to submit your inquiry.';
+		} finally {
+			projectFormSending = false;
+		}
 	}
 </script>
 
@@ -680,9 +698,11 @@
 					<button
 						type="submit"
 						class="btn btn-primary modal-submit"
+						disabled={projectFormSending}
 					>
-						Send Project Information
+						{projectFormSending ? 'Sending…' : 'Send Project Information'}
 					</button>
+					{#if projectFormError}<p class="form-error">{projectFormError}</p>{/if}
 
 				</form>
 
@@ -1504,6 +1524,8 @@
 		font-size: 11px;
 		font-weight: 400;
 	}
+
+	.form-error { color: #9b3028; font-size: 13px; }
 
 	.modal-submit {
 		width: 100%;

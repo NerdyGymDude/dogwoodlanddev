@@ -10,9 +10,13 @@
 	} = $props();
 
 	let composeOpen = $state(false);
-	let recipientId = $state('');
+	let emailFrom = $state('office@dogwoodlanddev.com');
+	let recipientIds = $state<string[]>([]);
+	let manualRecipients = $state('');
 	let emailSubject = $state('');
 	let emailBody = $state('');
+	let emailSending = $state(false);
+	let emailError = $state('');
 	const client = $derived(store.clients.find((item) => item.id === project.clientId));
 	const emailContacts = $derived(client?.contacts.filter((contact) => contact.email) ?? []);
 	const projectDocuments = $derived(store.documents.filter((document) => document.projectId === project.id));
@@ -26,10 +30,38 @@
 	}
 
 	function openCompose() {
-		recipientId = emailContacts.find((contact) => contact.primary)?.id ?? emailContacts[0]?.id ?? '';
+		emailFrom = 'office@dogwoodlanddev.com';
+		const primary = emailContacts.find((contact) => contact.primary);
+		recipientIds = primary ? [primary.id] : [];
+		manualRecipients = '';
 		emailSubject = project.name;
 		emailBody = '';
+		emailError = '';
 		composeOpen = true;
+	}
+
+	function toggleRecipient(id: string, checked: boolean) {
+		recipientIds = checked ? [...new Set([...recipientIds, id])] : recipientIds.filter((item) => item !== id);
+	}
+
+	async function sendEmail() {
+		if (emailSending) return;
+		emailSending = true;
+		emailError = '';
+		const selected = emailContacts.filter((contact) => recipientIds.includes(contact.id)).map((contact) => contact.email);
+		const manual = manualRecipients.split(/[;,\s]+/).map((email) => email.trim()).filter(Boolean);
+		try {
+			const response = await fetch('/admin/api/email', {
+				method: 'POST', headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ from: emailFrom, recipients: [...selected, ...manual], subject: emailSubject, message: emailBody })
+			});
+			const result = await response.json();
+			if (!response.ok) throw new Error(result.error || 'Unable to send email.');
+			composeOpen = false;
+			store.notify('Project email sent');
+		} catch (error) {
+			emailError = error instanceof Error ? error.message : 'Unable to send email.';
+		} finally { emailSending = false; }
 	}
 </script>
 
@@ -110,14 +142,17 @@
 		<div class="compose-modal" role="dialog" aria-modal="true" aria-labelledby="compose-title">
 			<header><div><p>PROJECT EMAIL</p><h2 id="compose-title">Compose Email</h2></div><button aria-label="Close compose email" onclick={() => (composeOpen = false)}>×</button></header>
 			<div class="compose-fields">
-				<label>To<select bind:value={recipientId} disabled={!emailContacts.length}>
-					{#if !emailContacts.length}<option value="">No client contacts with email</option>{/if}
-					{#each emailContacts as contact}<option value={contact.id}>{contact.name || contact.email} — {contact.email}</option>{/each}
-				</select></label>
+				<label>From<select bind:value={emailFrom}><option>office@dogwoodlanddev.com</option><option>branch@dogwoodlanddev.com</option></select></label>
+				<fieldset><legend>To</legend>
+					{#each emailContacts as contact}<label class="recipient"><input type="checkbox" checked={recipientIds.includes(contact.id)} onchange={(event) => toggleRecipient(contact.id, event.currentTarget.checked)} /><span>{contact.name || contact.email} — {contact.email}</span></label>{/each}
+					{#if !emailContacts.length}<span class="recipient-empty">No client contacts with email.</span>{/if}
+				</fieldset>
+				<label>Additional email addresses<input bind:value={manualRecipients} placeholder="name@example.com, another@example.com" /></label>
 				<label>Subject<input bind:value={emailSubject} /></label>
 				<label>Body<textarea rows="8" bind:value={emailBody}></textarea></label>
+				{#if emailError}<p class="email-error">{emailError}</p>{/if}
 			</div>
-			<footer><span>Email sending is not available in this phase.</span><button onclick={() => (composeOpen = false)}>Close</button></footer>
+			<footer><button onclick={() => (composeOpen = false)} disabled={emailSending}>Cancel</button><button class="send" onclick={sendEmail} disabled={emailSending}>{emailSending ? 'Sending…' : 'Send Email'}</button></footer>
 		</div>
 	</div>
 {/if}
@@ -159,11 +194,18 @@
 	.compose-modal header button { border: 0; background: transparent; color: #69757c; font-size: 26px; cursor: pointer; }
 	.compose-fields { display: grid; gap: 14px; padding: 20px; }
 	.compose-fields label { display: grid; gap: 6px; color: #46564c; font-size: 12px; font-weight: 700; }
+	.compose-fields fieldset { display: grid; gap: 8px; margin: 0; border: 1px solid #d4dbd4; border-radius: 7px; padding: 10px; }
+	.compose-fields legend { color: #46564c; font-size: 12px; font-weight: 700; }
+	.compose-fields .recipient { display: flex; align-items: flex-start; gap: 8px; font-weight: 500; }
+	.compose-fields .recipient input { width: auto; }
+	.recipient-empty { color: #7a858d; font-size: 12px; }
+	.email-error { margin: 0; color: #9b3028; font-size: 12px; }
 	.compose-fields input, .compose-fields select, .compose-fields textarea { box-sizing: border-box; width: 100%; border: 1px solid #d4dbd4; border-radius: 7px; padding: 10px; font: inherit; color: #26384d; }
 	.compose-fields textarea { resize: vertical; }
-	.compose-modal footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid #dfe5de; padding: 14px 20px; }
-	.compose-modal footer span { color: #7a858d; font-size: 11px; }
+	.compose-modal footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; border-top: 1px solid #dfe5de; padding: 14px 20px; }
 	.compose-modal footer button { border: 1px solid #cfd6d1; border-radius: 7px; background: #fff; padding: 9px 15px; color: #203552; font: inherit; font-weight: 700; cursor: pointer; }
+	.compose-modal footer .send { border-color: #203552; background: #203552; color: #fff; }
+	.compose-modal button:disabled { cursor: wait; opacity: .65; }
 	@media (max-width: 760px) {
 		.dashboard-grid { grid-template-columns: 1fr; }
 		.financials-panel { grid-column: auto; }

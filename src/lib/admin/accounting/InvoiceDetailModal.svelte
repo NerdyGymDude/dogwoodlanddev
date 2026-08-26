@@ -18,6 +18,26 @@
 	const client = $derived(
 		invoice ? store.clients.find((item) => item.id === invoice.clientId) : undefined
 	);
+	let emailBody = $state('Please find the invoice details below.');
+	let sending = $state(false);
+	let sendError = $state('');
+
+	async function sendInvoice() {
+		if (!invoice || sending) return;
+		sending = true;
+		sendError = '';
+		try {
+			const response = await fetch(`/admin/api/invoices/${encodeURIComponent(invoice.id)}/send`, {
+				method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: emailBody })
+			});
+			const result = await response.json();
+			if (!response.ok) throw new Error(result.error || 'Unable to send invoice.');
+			invoice.sentAt = result.sentAt;
+			store.notify('Invoice email sent');
+		} catch (error) {
+			sendError = error instanceof Error ? error.message : 'Unable to send invoice.';
+		} finally { sending = false; }
+	}
 
 	function dateLabel(value: string) {
 		if (!value) return 'â€”';
@@ -44,7 +64,7 @@
 			</header>
 
 			<div class="status-row">
-				<strong>Invoice Sent</strong>
+				<strong>{invoice.sentAt ? 'Invoice Sent' : 'Not Sent'}</strong>
 				<span>{invoice.status}</span>
 			</div>
 
@@ -67,6 +87,13 @@
 					<strong>{money(invoice.amountPaid)}</strong>
 				</div>
 			{/if}
+
+			<div class="email-panel">
+				<strong>Email from accounting@dogwoodlanddev.com</strong>
+				<textarea rows="5" bind:value={emailBody}></textarea>
+				{#if sendError}<p>{sendError}</p>{/if}
+				<button onclick={sendInvoice} disabled={sending}>{sending ? 'Sending…' : invoice.sentAt ? 'Send Again' : 'Send Invoice'}</button>
+			</div>
 
 			<footer>
 				<button onclick={onclose}>Close</button>
@@ -167,6 +194,11 @@
 	}
 	.amount strong { color: #1b2a44; font-size: 24px; }
 	.paid strong { color: #526a4b; }
+	.email-panel { display: grid; gap: 10px; margin: 16px 24px 0; border-top: 1px solid #e3e7e3; padding-top: 16px; }
+	.email-panel textarea { box-sizing: border-box; width: 100%; border: 1px solid #d4dbd4; border-radius: 7px; padding: 10px; font: inherit; resize: vertical; }
+	.email-panel p { margin: 0; color: #9b3028; font-size: 12px; }
+	.email-panel button { justify-self: end; border: 0; border-radius: 7px; background: #203552; padding: 10px 16px; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+	.email-panel button:disabled { cursor: wait; opacity: .65; }
 	footer {
 		display: flex;
 		justify-content: flex-end;

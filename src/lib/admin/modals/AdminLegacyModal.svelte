@@ -23,6 +23,9 @@
 	let formDescription = $state('');
 	let formFromEmail = $state('branch@dogwoodlanddev.com');
 	let emailSending = $state(false);
+	let recipientIds = $state<string[]>([]);
+	let manualRecipients = $state('');
+	let emailError = $state('');
 
 	
 $effect(() => {
@@ -34,6 +37,12 @@ $effect(() => {
 		const primary = contactsWithEmail.find((contact) => contact.primary);
 	
 		formEmail = primary?.email ?? contactsWithEmail[0]?.email ?? '';
+		recipientIds = primary ? [primary.id] : [];
+		manualRecipients = '';
+		emailError = '';
+		formFromEmail = 'branch@dogwoodlanddev.com';
+		formTitle = '';
+		formDescription = '';
 	
 	}
 	if (modal === 'editclient' && client) {
@@ -47,7 +56,28 @@ $effect(() => {
 
 	async function save() {
 		if (modal === 'email') {
+			if (emailSending) return;
 			emailSending = true;
+			emailError = '';
+
+			if (client) {
+				const selected = client.contacts.filter((contact) => recipientIds.includes(contact.id)).map((contact) => contact.email);
+				const manual = manualRecipients.split(/[;,\s]+/).map((email) => email.trim()).filter(Boolean);
+				try {
+					const response = await fetch('/admin/api/email', {
+						method: 'POST', headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ from: formFromEmail, recipients: [...selected, ...manual], subject: formTitle, message: formDescription })
+					});
+					const result = await response.json();
+					if (!response.ok) throw new Error(result.error || 'Email could not be sent.');
+					store.notify('Client email sent');
+					onsaved();
+					onclose();
+				} catch (error) {
+					emailError = error instanceof Error ? error.message : 'Email could not be sent.';
+				} finally { emailSending = false; }
+				return;
+			}
 
 			const formData = new FormData();
 			formData.set('from', formFromEmail);
@@ -102,6 +132,10 @@ $effect(() => {
 
 		onsaved();
 		onclose();
+	}
+
+	function toggleRecipient(id: string, checked: boolean) {
+		recipientIds = checked ? [...new Set([...recipientIds, id])] : recipientIds.filter((item) => item !== id);
 	}
 </script>
 
@@ -203,6 +237,10 @@ $effect(() => {
 					<label>
 						From
 						<select bind:value={formFromEmail}>
+							{#if client}
+							<option value="branch@dogwoodlanddev.com">Branch &mdash; branch@dogwoodlanddev.com</option>
+							<option value="office@dogwoodlanddev.com">Office &mdash; office@dogwoodlanddev.com</option>
+							{:else}
 							<option value="branch@dogwoodlanddev.com">
 								Branch &mdash; branch@dogwoodlanddev.com
 							</option>
@@ -215,6 +253,7 @@ $effect(() => {
 							<option value="permitting@dogwoodlanddev.com">
 								Permitting &mdash; permitting@dogwoodlanddev.com
 							</option>
+							{/if}
 						</select>
 					</label>
 
@@ -222,13 +261,17 @@ $effect(() => {
     To
 
     {#if client}
-        <select bind:value={formEmail} required>
+        <div class="recipient-list">
             {#each client.contacts.filter((contact) => contact.email) as contact}
-                <option value={contact.email}>
+                <label class="recipient-option">
+					<input type="checkbox" checked={recipientIds.includes(contact.id)} onchange={(event) => toggleRecipient(contact.id, event.currentTarget.checked)} />
+					<span>
                     {contact.name} — {contact.primary ? 'Primary' : contact.role} — {contact.email}
-                </option>
+                    </span>
+				</label>
             {/each}
-        </select>
+        </div>
+		<input bind:value={manualRecipients} placeholder="Additional email addresses" />
 
         {#if !client.contacts.some((contact) => contact.email)}
             <small>No contacts for this client have an email address.</small>
@@ -242,6 +285,7 @@ $effect(() => {
         />
     {/if}
 </label>
+					{#if emailError}<p class="email-error">{emailError}</p>{/if}
 				{:else if modal === 'client' || modal === 'editclient'}
 					{#if modal === 'editclient' && client}
 						<label>
