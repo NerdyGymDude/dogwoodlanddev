@@ -29,6 +29,8 @@
 	let {
 		open = false,
 		initialType = null,
+		initialClientId = '',
+		initialProjectId = '',
 		clients = [],
 		projects = [],
 		users = [],
@@ -38,8 +40,10 @@
 	}: {
 		open?: boolean;
 		initialType?: AdminRecordType | null;
-		clients?: Array<{ id: string; name: string }>;
-		projects?: Array<{ id: string; name: string; clientId?: string }>;
+		initialClientId?: string;
+		initialProjectId?: string;
+		clients?: Array<{ id: string; name: string; contacts: Array<{ id: string; name: string; email: string; role: string; primary?: boolean }> }>;
+		projects?: Array<{ id: string; name: string; clientId?: string; projectNumber?: string }>;
 		users?: Array<{ id: string; name: string }>;
 		vendors?: Array<{ id: string; name: string }>;
 		onclose: () => void;
@@ -47,6 +51,7 @@
 	} = $props();
 
 	let selectedType = $state<AdminRecordType | null>(null);
+	const activeType = $derived(initialType ?? selectedType);
 
 	let clientForm = $state(createClientForm());
 	let contactForm = $state(createContactForm());
@@ -60,11 +65,23 @@
 	let noteForm = $state(createNoteForm());
 
 	const selectedOption = $derived(
-		quickAddOptions.find((option) => option.type === selectedType)
+		quickAddOptions.find((option) => option.type === activeType)
 	);
 
 	$effect(() => {
-		if (open) selectedType = initialType;
+		if (open) {
+			selectedType = initialType;
+			if (initialType === 'invoice') {
+				const nextInvoiceForm = createInvoiceForm();
+				nextInvoiceForm.clientId = initialClientId;
+				nextInvoiceForm.projectId = initialProjectId;
+				const primary = clients.find((client) => client.id === initialClientId)?.contacts.find(
+					(contact) => contact.primary && contact.email
+				);
+				nextInvoiceForm.recipientContactIds = primary ? [primary.id] : [];
+				invoiceForm = nextInvoiceForm;
+			}
+		}
 	});
 
 	function choose(type: AdminRecordType) {
@@ -72,6 +89,10 @@
 	}
 
 	function back() {
+		if (initialType) {
+			close();
+			return;
+		}
 		selectedType = null;
 	}
 
@@ -83,7 +104,7 @@
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
 
-		if (!selectedType) return;
+		if (!activeType) return;
 
 		const values = {
 			client: clientForm,
@@ -98,7 +119,7 @@
 			note: noteForm
 		};
 
-		onsave(selectedType, values[selectedType]);
+		onsave(activeType, values[activeType]);
 	}
 </script>
 
@@ -125,10 +146,10 @@
 					{/if}
 				</div>
 
-				<button type="button" class="close" aria-label="Close Quick Add" onclick={close}>×</button>
+				<button type="button" class="close" aria-label="Close Quick Add" onclick={close}>&times;</button>
 			</header>
 
-			{#if !selectedType}
+			{#if !activeType}
 				<div class="option-grid">
 					{#each quickAddOptions as option}
 						<button type="button" class="option" onclick={() => choose(option.type)}>
@@ -143,33 +164,33 @@
 			{:else}
 				<form onsubmit={submit}>
 					<div class="form-scroll">
-						{#if selectedType === 'client'}
+						{#if activeType === 'client'}
 							<ClientForm value={clientForm} />
-						{:else if selectedType === 'contact'}
+						{:else if activeType === 'contact'}
 							<ContactForm value={contactForm} {clients} {projects} {users} />
-						{:else if selectedType === 'project'}
-							<ProjectForm value={projectForm} {clients} {users} />
-						{:else if selectedType === 'task'}
+						{:else if activeType === 'project'}
+							<ProjectForm value={projectForm} {clients} />
+						{:else if activeType === 'task'}
 							<TaskForm value={taskForm} {clients} {projects} {users} />
-						{:else if selectedType === 'estimate'}
+						{:else if activeType === 'estimate'}
 							<EstimateForm value={estimateForm} {clients} {projects} {users} />
-						{:else if selectedType === 'invoice'}
-							<InvoiceForm value={invoiceForm} {clients} {projects} {users} />
-						{:else if selectedType === 'expense'}
+						{:else if activeType === 'invoice'}
+							<InvoiceForm value={invoiceForm} {clients} {projects} />
+						{:else if activeType === 'expense'}
 							<ExpenseForm value={expenseForm} {clients} {projects} {users} {vendors} />
-						{:else if selectedType === 'document'}
+						{:else if activeType === 'document'}
 							<DocumentForm value={documentForm} {clients} {projects} {users} />
-						{:else if selectedType === 'event'}
+						{:else if activeType === 'event'}
 							<EventForm value={eventForm} {clients} {projects} {users} />
-						{:else if selectedType === 'note'}
+						{:else if activeType === 'note'}
 							<NoteForm value={noteForm} {clients} {projects} {users} />
 						{/if}
 					</div>
 
 					<footer class="actions">
-						<button type="button" class="secondary" onclick={back}>← Back</button>
+						<button type="button" class="secondary" onclick={back}>{initialType ? 'Cancel' : '&larr; Back'}</button>
 						<button type="submit" class="primary">
-							{selectedType === 'document' ? 'Upload File' : `Save ${selectedOption?.label ?? ''}`}
+							{activeType === 'document' ? 'Upload File' : `Save ${selectedOption?.label ?? ''}`}
 						</button>
 					</footer>
 				</form>
@@ -359,3 +380,4 @@
 		}
 	}
 </style>
+

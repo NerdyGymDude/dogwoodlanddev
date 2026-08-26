@@ -52,7 +52,7 @@
 			<button onclick={oncreateproject}>＋ Create project</button>
 		</div>
 
-		{#if client.projectIds.length}
+		{#if store.projects.some((project) => project.clientId === client.id)}
 			{#each store.projects.filter((project) => project.clientId === client.id) as project}
 				<button class="project-row" onclick={() => onopenproject(project.id)}>
 					<div>

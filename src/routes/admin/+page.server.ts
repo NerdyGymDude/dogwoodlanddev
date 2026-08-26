@@ -1,7 +1,8 @@
-import { fail } from '@sveltejs/kit';
+﻿import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getClients } from '$lib/server/admin/clients';
 import { getEvents, getProjects, getTasks } from '$lib/server/admin/core';
+import { getInvoices } from '$lib/server/admin/accounting';
 import { requireActiveStaff } from '$lib/server/admin/authorization';
 import {
 	getZohoInboxMessages,
@@ -18,11 +19,12 @@ const allowedMailboxes = new Set([
 export const load: PageServerLoad = async ({ locals }) => {
 	await requireActiveStaff(locals);
 
-	const [clients, projects, tasks, events] = await Promise.all([
+	const [clients, projects, tasks, events, invoices] = await Promise.all([
 		getClients(locals.supabase),
 		getProjects(locals.supabase),
 		getTasks(locals.supabase),
-		getEvents(locals.supabase)
+		getEvents(locals.supabase),
+		getInvoices(locals.supabase)
 	]);
 
 	const mailboxAddresses = [
@@ -62,6 +64,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		projects,
 		tasks,
 		events,
+		invoices,
 		zohoInboxes
 	};
 };
@@ -135,3 +138,4 @@ export const actions: Actions = {
 		}
 	}
 };
+

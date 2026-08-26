@@ -8,13 +8,10 @@
 
 	let {
 		value,
-		clients = [],
-		users = []
+		clients = []
 	}: {
 		value: ProjectFormData;
 		clients?: Array<{ id: string; name: string }>;
-		projects?: Array<{ id: string; name: string; clientId?: string }>;
-		users?: Array<{ id: string; name: string }>;
 	} = $props();
 </script>
 
@@ -37,6 +34,7 @@
 				id="project-name"
 				bind:value={value.title}
 				placeholder="Project name"
+				required
 			/>
 		</FormField>
 
@@ -47,15 +45,6 @@
 				<option value="pending">Pending</option>
 				<option value="completed">Completed</option>
 				<option value="canceled">Canceled</option>
-			</select>
-		</FormField>
-
-		<FormField label="Assigned To" forId="project-assigned">
-			<select id="project-assigned" bind:value={value.assignedTo}>
-				<option value="">Unassigned</option>
-				{#each users as user}
-					<option value={user.id}>{user.name}</option>
-				{/each}
 			</select>
 		</FormField>
 	</FormGrid>
@@ -75,22 +64,10 @@
 			placeholder="Internal notes or follow-up information"
 		></textarea>
 	</FormField>
-
-	<label class="share-toggle">
-		<input type="checkbox" bind:checked={value.clientVisible} />
-		<span>
-			<strong>Share with client</strong>
-			<small>Allow this project to appear in the Client Portal when applicable.</small>
-		</span>
-	</label>
 </FormSection>
 
 <FormSection title="Project Details">
 	<FormGrid>
-		<FormField label="Project Number" forId="project-number">
-			<input id="project-number" bind:value={value.projectNumber} placeholder="DLD-2026-001" />
-		</FormField>
-
 		<FormField label="Project Type" forId="project-type">
 			<select id="project-type" bind:value={value.projectType}>
 				<option value="">Select project type</option>
@@ -114,11 +91,11 @@
 			<input id="project-target" type="date" bind:value={value.targetCompletionDate} />
 		</FormField>
 
-		<FormField label="Budget" forId="project-budget">
+		<FormField label="Estimate" forId="project-estimate">
 			<MoneyInput
-				id="project-budget"
+				id="project-estimate"
 				bind:value={value.budget}
-				placeholder="2,500,000"
+				placeholder="0.00"
 			/>
 		</FormField>
 	</FormGrid>
@@ -144,8 +121,23 @@
 	</FormGrid>
 </FormSection>
 
-<FormSection title="Attachments" description="Optional files associated with this record.">
+<FormSection title="Attachments" description="Optional files associated with this project.">
 	<AttachmentsField bind:files={value.attachments} />
+</FormSection>
+
+<FormSection
+	title="Client Sharing"
+	description="Control whether the client receives access to this project's overview."
+>
+	<label class="share-toggle">
+		<input type="checkbox" bind:checked={value.clientVisible} />
+		<span>
+			<strong>Share with client</strong>
+			<small>
+				Make this project available to the client and send them the project overview.
+			</small>
+		</span>
+	</label>
 </FormSection>
 
 <style>

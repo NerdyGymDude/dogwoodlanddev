@@ -10,18 +10,22 @@ export interface AdminClientRecord {
 	state: string;
 	zip: string;
 	notes: string;
+	primaryContactId: string;
 	primaryContactName: string;
 	primaryContactPhone: string;
 	primaryContactEmail: string;
+	secondaryContactId: string;
 	secondaryContactName: string;
 	secondaryContactPhone: string;
 	secondaryContactEmail: string;
+	tertiaryContactId: string;
 	tertiaryContactName: string;
 	tertiaryContactPhone: string;
 	tertiaryContactEmail: string;
 }
 
 interface ClientContactRow {
+	id: string;
 	contact_type: 'primary' | 'secondary' | 'tertiary';
 	name: string | null;
 	phone: string | null;
@@ -62,14 +66,17 @@ function mapClient(row: ClientRow): AdminClientRecord {
 		zip: row.zip ?? '',
 		notes: row.notes ?? '',
 
+		primaryContactId: primary?.id ?? '',
 		primaryContactName: primary?.name ?? '',
 		primaryContactPhone: primary?.phone ?? '',
 		primaryContactEmail: primary?.email ?? '',
 
+		secondaryContactId: secondary?.id ?? '',
 		secondaryContactName: secondary?.name ?? '',
 		secondaryContactPhone: secondary?.phone ?? '',
 		secondaryContactEmail: secondary?.email ?? '',
 
+		tertiaryContactId: tertiary?.id ?? '',
 		tertiaryContactName: tertiary?.name ?? '',
 		tertiaryContactPhone: tertiary?.phone ?? '',
 		tertiaryContactEmail: tertiary?.email ?? ''
@@ -91,6 +98,7 @@ export async function getClients(
 			zip,
 			notes,
 			client_contacts (
+				id,
 				contact_type,
 				name,
 				phone,
@@ -193,6 +201,7 @@ export async function createClient(
 			zip,
 			notes,
 			client_contacts (
+				id,
 				contact_type,
 				name,
 				phone,

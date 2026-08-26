@@ -33,6 +33,7 @@ export interface AdminProjectRecord {
 	budget: number;
 	assignedTo: string;
 	clientVisible: boolean;
+	createdDate: string;
 }
 
 export interface AdminTaskRecord {
@@ -86,7 +87,8 @@ function mapProject(row: any): AdminProjectRecord {
 		targetCompletionDate: row.target_completion_date ?? '',
 		budget: Number(row.budget ?? 0),
 		assignedTo: row.assigned_to ?? '',
-		clientVisible: Boolean(row.client_visible)
+		clientVisible: Boolean(row.client_visible),
+		createdDate: row.created_at ?? ''
 	};
 }
 

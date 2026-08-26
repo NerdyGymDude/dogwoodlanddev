@@ -97,13 +97,22 @@ export interface EstimateFormData extends AdminFormBase {
 	taxRate: number;
 }
 
-export interface InvoiceFormData extends AdminFormBase {
-	invoiceNumber: string;
+export type InvoiceStatus =
+	| 'Not Billed'
+	| 'Billed - Not Paid'
+	| 'Billed - Partial Payment'
+	| 'Billed - Paid';
+
+export interface InvoiceFormData {
+	clientId: string;
+	projectId: string;
+	subject: string;
+	date: string;
+	status: InvoiceStatus;
 	dueDate: string;
-	lineItems: LineItem[];
-	discount: string;
-	taxRate: number;
-	paymentStatus: 'unpaid' | 'partial' | 'paid' | 'overdue';
+	amount: string;
+	recipientContactIds: string[];
+	attachments: File[];
 }
 
 export interface ExpenseFormData extends AdminFormBase {

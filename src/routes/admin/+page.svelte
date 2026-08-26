@@ -21,15 +21,17 @@
 	import ReportsView from '$lib/admin/reports/ReportsView.svelte';
 	import SettingsView from '$lib/admin/settings/SettingsView.svelte';
 	import AdminLegacyModal from '$lib/admin/modals/AdminLegacyModal.svelte';
+	import InvoiceDetailModal from '$lib/admin/accounting/InvoiceDetailModal.svelte';
 
 	import type {
 		AdminRecordType,
 		ClientFormData,
 		EventFormData,
+		InvoiceFormData,
 		ProjectFormData,
 		TaskFormData
 	} from '$lib/admin/forms/types';
-	import type { Client, ProjectStatus } from '$lib/admin/types';
+	import type { Client, Invoice, ProjectStatus } from '$lib/admin/types';
 	import type { PageData } from './$types';
 
 	type InboxSearchMessage = {
@@ -54,6 +56,7 @@
 	let selectedClient = $state('');
 	let moreOpen = $state(false);
 	let modal = $state('');
+	let selectedInvoice = $state<Invoice | null>(null);
 
 	let quickAddOpen = $state(false);
 	let quickAddType = $state<AdminRecordType | null>(null);
@@ -162,12 +165,15 @@
 		state: string;
 		zip: string;
 		notes: string;
+		primaryContactId: string;
 		primaryContactName: string;
 		primaryContactPhone: string;
 		primaryContactEmail: string;
+		secondaryContactId: string;
 		secondaryContactName: string;
 		secondaryContactPhone: string;
 		secondaryContactEmail: string;
+		tertiaryContactId: string;
 		tertiaryContactName: string;
 		tertiaryContactPhone: string;
 		tertiaryContactEmail: string;
@@ -176,7 +182,7 @@
 
 		if (record.primaryContactName || record.primaryContactPhone || record.primaryContactEmail) {
 			contacts.push({
-				id: `${record.id}-primary`,
+				id: record.primaryContactId,
 				name: record.primaryContactName,
 				role: 'Primary Contact',
 				email: record.primaryContactEmail,
@@ -192,7 +198,7 @@
 			record.secondaryContactEmail
 		) {
 			contacts.push({
-				id: `${record.id}-secondary`,
+				id: record.secondaryContactId,
 				name: record.secondaryContactName,
 				role: 'Secondary Contact',
 				email: record.secondaryContactEmail,
@@ -203,7 +209,7 @@
 
 		if (record.tertiaryContactName || record.tertiaryContactPhone || record.tertiaryContactEmail) {
 			contacts.push({
-				id: `${record.id}-tertiary`,
+				id: record.tertiaryContactId,
 				name: record.tertiaryContactName,
 				role: 'Tertiary Contact',
 				email: record.tertiaryContactEmail,
@@ -273,7 +279,8 @@
 			lastActivity: 'Just now',
 			budget: Number(record.budget || 0),
 			invoiced: 0,
-			costs: 0
+			costs: 0,
+			createdDate: record.createdDate || ''
 		};
 	}
 
@@ -313,6 +320,32 @@
 			clientId: record.clientId || undefined,
 			shared: Boolean(record.clientVisible)
 		};
+	}
+
+
+	function invoiceRecordFromApi(record: any): Invoice {
+		return {
+			id: record.id,
+			clientId: record.clientId || '',
+			projectId: record.projectId || undefined,
+			subject: record.subject || '',
+			date: record.date || '',
+			dueDate: record.dueDate || '',
+			amount: Number(record.amount || 0),
+			status: record.status || 'Billed - Not Paid',
+			amountPaid: Number(record.amountPaid || 0),
+			recipientContactIds: Array.isArray(record.recipientContactIds)
+				? record.recipientContactIds
+				: []
+		};
+	}
+
+	function openInvoice(invoice: Invoice) {
+		selectedInvoice = invoice;
+	}
+
+	function closeInvoice() {
+		selectedInvoice = null;
 	}
 
 	async function saveQuickAdd(type: AdminRecordType, formData: unknown) {
@@ -385,6 +418,29 @@
 				return;
 			}
 
+			if (type === 'invoice') {
+				const invoiceForm = formData as InvoiceFormData;
+				const response = await fetch('/admin/api/invoices', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						...invoiceForm,
+						status: 'Billed - Not Paid'
+					})
+				});
+
+				const result = await response.json();
+
+				if (!response.ok) throw new Error(result.error || 'Unable to save invoice.');
+
+				const invoice = invoiceRecordFromApi(result.invoice);
+				store.addPersistedInvoice(invoice);
+				store.notify('Invoice created');
+				closeQuickAdd();
+				openInvoice(invoice);
+				return;
+			}
+
 			store.notify(
 				`${type.charAt(0).toUpperCase() + type.slice(1)} form is ready; Supabase save is not connected yet.`
 			);
@@ -399,6 +455,7 @@
 		store.loadPersistedProjects(data.projects.map(projectRecordFromApi));
 		store.loadPersistedTasks(data.tasks.map(taskRecordFromApi));
 		store.loadPersistedEvents(data.events.map(eventRecordFromApi));
+		store.loadPersistedInvoices(data.invoices.map(invoiceRecordFromApi));
 
 		if ('serviceWorker' in navigator) {
 			navigator.serviceWorker.register('/service-worker.js').catch(() => {});
@@ -407,7 +464,7 @@
 </script>
 
 <svelte:head
-	><title>Action Center · Dogwood Admin</title><meta name="theme-color" content="#18263f" /><link
+	><title>Action Center Â· Dogwood Admin</title><meta name="theme-color" content="#18263f" /><link
 		rel="manifest"
 		href="/manifest.webmanifest"
 	/><meta name="apple-mobile-web-app-capable" content="yes" /></svelte:head
@@ -480,6 +537,11 @@
                                         ongoback={() => go('projects')}
                                         onopenclient={openClient}
                                         onaddtask={() => openQuickAdd('task')}
+                                        oncreateinvoice={() => {
+                                                quickAddType = 'invoice';
+                                                quickAddOpen = true;
+                                        }}
+                                        onviewinvoice={openInvoice}
                                         onedit={() => (modal = 'editproject')}
                                         {money}
                                 />
@@ -505,8 +567,8 @@
                                 />
                         {:else if view === 'accounting'}
                                 <AccountingView
-                                        onquickadd={openQuickAdd}
-                                        {money}
+                                        oncreateinvoice={() => openQuickAdd('invoice')}
+                                        onviewinvoice={openInvoice}
                                 />
                         {:else if view === 'vendors'}
                                 <VendorsView
@@ -539,8 +601,25 @@
 <QuickAddModal
 	open={quickAddOpen}
 	initialType={quickAddType}
-	clients={store.clients.map((c) => ({ id: c.id, name: c.name }))}
-	projects={store.projects.map((p) => ({ id: p.id, name: p.name, clientId: p.clientId }))}
+	initialClientId={view === 'project' && project ? project.clientId : ''}
+	initialProjectId={view === 'project' && project ? project.id : ''}
+	clients={store.clients.map((c) => ({
+		id: c.id,
+		name: c.name,
+		contacts: c.contacts.map((contact) => ({
+			id: contact.id,
+			name: contact.name,
+			email: contact.email,
+			role: contact.role,
+			primary: contact.primary
+		}))
+	}))}
+	projects={store.projects.map((p) => ({
+		id: p.id,
+		name: p.name,
+		clientId: p.clientId,
+		projectNumber: p.projectNumber
+	}))}
 	users={store.users.map((u) => ({ id: u.id, name: u.name }))}
 	vendors={store.vendors.map((v) => ({ id: v.id, name: v.name }))}
 	onclose={closeQuickAdd}
@@ -554,4 +633,12 @@
         onsaved={() => {}}
 />
 
-{#if store.toast}<div class="toast">✓ {store.toast}</div>{/if}
+<InvoiceDetailModal
+	invoice={selectedInvoice}
+	onclose={closeInvoice}
+	{money}
+/>
+
+{#if store.toast}<div class="toast">âœ“ {store.toast}</div>{/if}
+
+

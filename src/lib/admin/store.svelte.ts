@@ -1,4 +1,4 @@
-import type {
+﻿import type {
 	ActionItem,
 	Client,
 	Project,
@@ -113,9 +113,22 @@ class AdminStore {
 	loadPersistedEvents(events: any[]) {
 		for (const event of [...events].reverse()) this.addPersistedEvent(event);
 	}
+    addPersistedInvoice(invoice: Invoice) {
+        const existing = this.invoices.findIndex((x) => x.id === invoice.id);
+        if (existing >= 0) this.invoices[existing] = invoice;
+        else this.invoices.unshift(invoice);
+    }
+
+    loadPersistedInvoices(invoices: Invoice[]) {
+        for (const invoice of [...invoices].reverse()) {
+            this.addPersistedInvoice(invoice);
+        }
+    }
 	markMailRead(id: string) {
 		const m = this.mail.find((x) => x.id === id);
 		if (m) m.unread = false;
 	}
 }
 export const adminStore = new AdminStore();
+
+
