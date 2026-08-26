@@ -151,9 +151,34 @@
 	let showProjectForm = $state(false);
 	let projectFormSubmitted = $state(false);
 
+	/**
+	 * @typedef {Object} ProjectInquiryForm
+	 * @property {string} businessName
+	 * @property {string} firstName
+	 * @property {string} lastName
+	 * @property {string} phone
+	 * @property {string} email
+	 */
+
+	/** @type {ProjectInquiryForm} */
+	let projectInquiryForm = $state({
+		businessName: '',
+		firstName: '',
+		lastName: '',
+		phone: '',
+		email: ''
+	});
+
 	function openProjectForm() {
 		showProjectForm = true;
 		projectFormSubmitted = false;
+		projectInquiryForm = {
+			businessName: '',
+			firstName: '',
+			lastName: '',
+			phone: '',
+			email: ''
+		};
 	}
 
 	function closeProjectForm() {
@@ -163,6 +188,14 @@
 	/** @param {SubmitEvent} event */
 	function handleProjectFormSubmit(event) {
 		event.preventDefault();
+		const payload = {
+			businessName: projectInquiryForm.businessName,
+			firstName: projectInquiryForm.firstName,
+			lastName: projectInquiryForm.lastName,
+			phone: projectInquiryForm.phone,
+			email: projectInquiryForm.email
+		};
+		void payload;
 
 		// TODO:
 		// Connect this to the website backend/email handler.
@@ -544,39 +577,37 @@
 					onsubmit={handleProjectFormSubmit}
 				>
 
-					<div class="form-row">
-
-						<label class="form-field">
-							Full Name
-
-							<input
-								type="text"
-								name="name"
-								required
-							/>
-						</label>
-
-						<label class="form-field">
-							Phone
-
-							<input
-								type="tel"
-								name="phone"
-								required
-							/>
-						</label>
-
-					</div>
-
 					<label class="form-field">
-						Email
+						Business Name (Optional)
 
 						<input
-							type="email"
-							name="email"
-							required
+							type="text"
+							name="businessName"
+							bind:value={projectInquiryForm.businessName}
 						/>
 					</label>
+
+					<div class="form-row">
+						<label class="form-field">
+							First Name
+							<input type="text" name="firstName" bind:value={projectInquiryForm.firstName} required />
+						</label>
+						<label class="form-field">
+							Last Name
+							<input type="text" name="lastName" bind:value={projectInquiryForm.lastName} required />
+						</label>
+					</div>
+
+					<div class="form-row">
+						<label class="form-field">
+							Phone (Optional)
+							<input type="tel" name="phone" bind:value={projectInquiryForm.phone} />
+						</label>
+						<label class="form-field">
+							Email
+							<input type="email" name="email" bind:value={projectInquiryForm.email} required />
+						</label>
+					</div>
 
 					<label class="form-field">
 						Property Address

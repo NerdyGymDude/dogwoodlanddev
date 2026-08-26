@@ -4,6 +4,7 @@ import type { ClientFormData } from '$lib/admin/forms/types';
 export interface AdminClientRecord {
 	id: string;
 	name: string;
+	shortName: string;
 	status: string;
 	address: string;
 	city: string;
@@ -35,6 +36,7 @@ interface ClientContactRow {
 interface ClientRow {
 	id: string;
 	name: string;
+	short_name: string | null;
 	status: string;
 	address: string | null;
 	city: string | null;
@@ -59,6 +61,7 @@ function mapClient(row: ClientRow): AdminClientRecord {
 	return {
 		id: row.id,
 		name: row.name,
+		shortName: row.short_name ?? '',
 		status: row.status,
 		address: row.address ?? '',
 		city: row.city ?? '',
@@ -91,6 +94,7 @@ export async function getClients(
 		.select(`
 			id,
 			name,
+			short_name,
 			status,
 			address,
 			city,
@@ -124,15 +128,20 @@ export async function createClient(
 	form: ClientFormData
 ): Promise<AdminClientRecord> {
 	const name = form.companyName.trim();
+	const shortName = form.shortName.trim();
 
 	if (!name) {
 		throw new Error('Client name is required.');
+	}
+	if (!shortName) {
+		throw new Error('Client Short Name is required.');
 	}
 
 	const { data: client, error: clientError } = await supabase
 		.from('clients')
 		.insert({
 			name,
+			short_name: shortName,
 			status: form.status,
 			address: form.address.trim() || null,
 			city: form.city.trim() || null,
@@ -145,6 +154,9 @@ export async function createClient(
 		.single();
 
 	if (clientError) {
+		if (clientError.code === '23505') {
+			throw new Error(`Short Name "${shortName}" is already in use. Choose a different Short Name.`);
+		}
 		throw clientError;
 	}
 
@@ -194,6 +206,7 @@ export async function createClient(
 		.select(`
 			id,
 			name,
+			short_name,
 			status,
 			address,
 			city,

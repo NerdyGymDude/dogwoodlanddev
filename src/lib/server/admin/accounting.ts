@@ -4,6 +4,8 @@ import type { InvoiceFormData, InvoiceStatus } from '$lib/admin/forms/types';
 
 export interface AdminInvoiceRecord {
     id: string;
+	invoiceIdentifier: string;
+	sentAt: string;
     clientId: string;
     projectId: string;
     subject: string;
@@ -54,6 +56,8 @@ function parseAmount(value: string) {
 function mapInvoice(row: any): AdminInvoiceRecord {
     return {
         id: row.id,
+		invoiceIdentifier: row.invoice_identifier ?? '',
+		sentAt: row.sent_at ?? '',
         clientId: row.client_id ?? '',
         projectId: row.project_id ?? '',
         subject: row.subject ?? '',
@@ -111,11 +115,46 @@ export async function createInvoice(
         throw new Error('One or more invoice contacts are invalid.');
     }
 
-    const { data, error } = await supabase
-        .from('invoices')
-        .insert({
+	const { data: project, error: projectError } = await supabase
+		.from('projects')
+		.select('project_number, client_id')
+		.eq('id', form.projectId)
+		.single();
+
+	if (projectError) throw projectError;
+	if (project.client_id !== form.clientId) throw new Error('The selected project does not belong to this client.');
+
+	const projectNumber = String(project.project_number ?? '').trim();
+	if (!projectNumber) throw new Error('The selected project does not have a Project ID.');
+	const identifierPattern = new RegExp(
+		`^${projectNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:-(\\d+))?$`,
+		'i'
+	);
+
+	for (let attempt = 0; attempt < 5; attempt += 1) {
+		const { data: history, error: historyError } = await supabase
+			.from('invoices')
+			.select('invoice_identifier')
+			.eq('project_id', form.projectId)
+			.not('invoice_identifier', 'is', null);
+
+		if (historyError) throw historyError;
+
+		const nextSequence = (history ?? []).reduce((highest, row) => {
+			const match = String(row.invoice_identifier ?? '').match(identifierPattern);
+			if (!match) return highest;
+			return Math.max(highest, match[1] ? Number(match[1]) : 1);
+		}, 0) + 1;
+		const invoiceIdentifier = nextSequence === 1
+			? projectNumber
+			: `${projectNumber}-${String(nextSequence).padStart(2, '0')}`;
+
+		const { data, error } = await supabase
+			.from('invoices')
+			.insert({
             client_id: form.clientId,
             project_id: form.projectId,
+			invoice_identifier: invoiceIdentifier,
             subject,
             invoice_date: form.date,
             due_date: form.dueDate || null,
@@ -124,12 +163,14 @@ export async function createInvoice(
             amount_paid: 0,
             recipient_contact_ids: recipientContactIds,
             created_by: userId
-        })
-        .select('*')
-        .single();
+            })
+			.select('*')
+			.single();
 
-    if (error) throw error;
+		if (!error) return mapInvoice(data);
+		if (error.code !== '23505') throw error;
+	}
 
-    return mapInvoice(data);
+	throw new Error('Unable to reserve a unique Invoice Identifier. Please try again.');
 }
 

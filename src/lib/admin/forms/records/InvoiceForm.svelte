@@ -9,11 +9,13 @@
 	type InvoiceContact = { id: string; name: string; email: string; role: string; primary?: boolean };
 	type InvoiceClient = { id: string; name: string; contacts: InvoiceContact[] };
 	type InvoiceProject = { id: string; name: string; clientId?: string; projectNumber?: string };
+	type PersistedInvoice = { projectId?: string; invoiceIdentifier: string };
 
-	let { value, clients = [], projects = [] }: {
+	let { value, clients = [], projects = [], invoices = [] }: {
 		value: InvoiceFormData;
 		clients?: InvoiceClient[];
 		projects?: InvoiceProject[];
+		invoices?: PersistedInvoice[];
 	} = $props();
 
 	const selectedClient = $derived(clients.find((client) => client.id === value.clientId));
@@ -21,7 +23,21 @@
 	const visibleProjects = $derived(value.clientId
 		? projects.filter((project) => !project.clientId || project.clientId === value.clientId)
 		: projects);
-	const invoiceIdentifier = $derived(selectedProject?.projectNumber || 'Select a project');
+	const invoiceIdentifier = $derived.by(() => {
+		const projectNumber = selectedProject?.projectNumber;
+		if (!projectNumber) return 'Select a project';
+
+		const escaped = projectNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const pattern = new RegExp(`^${escaped}(?:-(\\d+))?$`, 'i');
+		const highest = invoices
+			.filter((invoice) => invoice.projectId === selectedProject?.id)
+			.reduce((max, invoice) => {
+				const match = invoice.invoiceIdentifier.match(pattern);
+				return match ? Math.max(max, match[1] ? Number(match[1]) : 1) : max;
+			}, 0);
+		const next = highest + 1;
+		return next === 1 ? projectNumber : `${projectNumber}-${String(next).padStart(2, '0')}`;
+	});
 
 	$effect(() => {
 		const subject = selectedClient && selectedProject
@@ -77,7 +93,7 @@
 				{#each visibleProjects as project}<option value={project.id}>{project.name}</option>{/each}
 			</select>
 		</FormField>
-		<FormField label="Invoice Identifier" hint="The first invoice uses the Project ID. Later suffixes require persisted invoice history.">
+		<FormField label="Invoice Identifier" hint="Previewed from persisted invoice history; confirmed when saved.">
 			<div class="read-only-value">{invoiceIdentifier}</div>
 		</FormField>
 		<FormField label="Status"><div class="status-value">Billed - Not Paid</div></FormField>

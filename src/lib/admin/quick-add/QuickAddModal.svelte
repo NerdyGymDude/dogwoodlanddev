@@ -31,8 +31,10 @@
 		initialType = null,
 		initialClientId = '',
 		initialProjectId = '',
+		lockProjectClient = false,
 		clients = [],
 		projects = [],
+		invoices = [],
 		users = [],
 		vendors = [],
 		onclose,
@@ -42,8 +44,10 @@
 		initialType?: AdminRecordType | null;
 		initialClientId?: string;
 		initialProjectId?: string;
+		lockProjectClient?: boolean;
 		clients?: Array<{ id: string; name: string; contacts: Array<{ id: string; name: string; email: string; role: string; primary?: boolean }> }>;
 		projects?: Array<{ id: string; name: string; clientId?: string; projectNumber?: string }>;
+		invoices?: Array<{ projectId?: string; invoiceIdentifier: string }>;
 		users?: Array<{ id: string; name: string }>;
 		vendors?: Array<{ id: string; name: string }>;
 		onclose: () => void;
@@ -71,6 +75,17 @@
 	$effect(() => {
 		if (open) {
 			selectedType = initialType;
+			if (initialType === 'project') {
+				const nextProjectForm = createProjectForm();
+				nextProjectForm.clientId = initialClientId;
+				projectForm = nextProjectForm;
+			}
+			if (initialType === 'document') {
+				const nextDocumentForm = createDocumentForm();
+				nextDocumentForm.clientId = initialClientId;
+				nextDocumentForm.projectId = initialProjectId;
+				documentForm = nextDocumentForm;
+			}
 			if (initialType === 'invoice') {
 				const nextInvoiceForm = createInvoiceForm();
 				nextInvoiceForm.clientId = initialClientId;
@@ -169,13 +184,13 @@
 						{:else if activeType === 'contact'}
 							<ContactForm value={contactForm} {clients} {projects} {users} />
 						{:else if activeType === 'project'}
-							<ProjectForm value={projectForm} {clients} />
+							<ProjectForm value={projectForm} {clients} clientLocked={lockProjectClient} />
 						{:else if activeType === 'task'}
 							<TaskForm value={taskForm} {clients} {projects} {users} />
 						{:else if activeType === 'estimate'}
 							<EstimateForm value={estimateForm} {clients} {projects} {users} />
 						{:else if activeType === 'invoice'}
-							<InvoiceForm value={invoiceForm} {clients} {projects} />
+							<InvoiceForm value={invoiceForm} {clients} {projects} {invoices} />
 						{:else if activeType === 'expense'}
 							<ExpenseForm value={expenseForm} {clients} {projects} {users} {vendors} />
 						{:else if activeType === 'document'}

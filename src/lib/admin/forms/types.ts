@@ -33,6 +33,7 @@ export interface AdminFormBase {
 
 export interface ClientFormData {
 	companyName: string;
+	shortName: string;
 	status: AdminRecordStatus;
 
 	primaryContactName: string;

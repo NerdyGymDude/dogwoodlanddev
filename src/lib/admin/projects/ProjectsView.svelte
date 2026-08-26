@@ -10,6 +10,21 @@
 		onquickadd: () => void;
 		money: (value: number) => string;
 	} = $props();
+
+	const estimatedProjects = $derived(store.projects.filter((project) => project.budget > 0));
+	const totalProjectValue = $derived(
+		estimatedProjects.reduce((sum, project) => sum + project.budget, 0)
+	);
+
+	function readableDate(value: string) {
+		if (!value) return 'TBD';
+
+		const date = new Date(`${value}T00:00:00`);
+		return new Intl.DateTimeFormat('en-US', {
+			month: 'short',
+			day: 'numeric'
+		}).format(date);
+	}
 </script>
 
 <div class="page-heading">
@@ -46,7 +61,7 @@
 	</div>
 
 	<div>
-		<strong>{money(store.projects.reduce((sum, project) => sum + project.budget, 0))}</strong>
+		<strong>{estimatedProjects.length ? money(totalProjectValue) : 'TBD'}</strong>
 		<span>Total project value</span>
 	</div>
 </div>
@@ -57,6 +72,7 @@
 			<div>
 				<span class="status {project.status.toLowerCase()}">{project.status}</span>
 				<small>{project.phase}</small>
+				<small>{project.projectNumber}</small>
 				<h3>{project.name}</h3>
 				<p>
 					{store.clients.find((client) => client.id === project.clientId)?.name}
@@ -66,20 +82,16 @@
 
 			<div class="project-metrics">
 				<span>
-					Next milestone
-					<strong>{project.nextMilestone}</strong>
+					Project Start Date
+					<strong>{readableDate(project.startDate)}</strong>
 				</span>
 				<span>
-					Last activity
-					<strong>{project.lastActivity}</strong>
+					Project End Date
+					<strong>{readableDate(project.targetCompletionDate)}</strong>
 				</span>
 				<span>
-					Open actions
-					<strong>
-						{store.actions.filter(
-							(action) => action.projectId === project.id && action.state !== 'Done'
-						).length}
-					</strong>
+					Estimate
+					<strong>{project.budget > 0 ? money(project.budget) : 'TBD'}</strong>
 				</span>
 			</div>
 

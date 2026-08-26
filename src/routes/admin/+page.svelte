@@ -160,6 +160,7 @@
 	function clientRecordFromApi(record: {
 		id: string;
 		name: string;
+		shortName: string;
 		address: string;
 		city: string;
 		state: string;
@@ -221,6 +222,7 @@
 		return {
 			id: record.id,
 			name: record.name,
+			shortName: record.shortName,
 			type: 'Company',
 			email: record.primaryContactEmail,
 			phone: record.primaryContactPhone,
@@ -267,12 +269,15 @@
 	function projectRecordFromApi(record: any) {
 		return {
 			id: record.id,
+			projectNumber: record.projectNumber || '',
 			name: record.name,
 			clientId: record.clientId || '',
 			address: [record.address, record.city, record.state, record.zip].filter(Boolean).join(', '),
 			status: projectStatus(record.status),
 			phase: record.phase || 'New',
 			summary: record.description || record.notes || '',
+			description: record.description || '',
+			projectType: record.projectType || '',
 			nextMilestone: record.targetCompletionDate
 				? `Target ${formatDateShort(record.targetCompletionDate)}`
 				: 'Not set',
@@ -280,6 +285,8 @@
 			budget: Number(record.budget || 0),
 			invoiced: 0,
 			costs: 0,
+			startDate: record.startDate || '',
+			targetCompletionDate: record.targetCompletionDate || '',
 			createdDate: record.createdDate || ''
 		};
 	}
@@ -326,6 +333,8 @@
 	function invoiceRecordFromApi(record: any): Invoice {
 		return {
 			id: record.id,
+			invoiceIdentifier: record.invoiceIdentifier || '',
+			sentAt: record.sentAt || '',
 			clientId: record.clientId || '',
 			projectId: record.projectId || undefined,
 			subject: record.subject || '',
@@ -536,7 +545,7 @@
                                         {project}
                                         ongoback={() => go('projects')}
                                         onopenclient={openClient}
-                                        onaddtask={() => openQuickAdd('task')}
+										onuploaddocument={() => openQuickAdd('document')}
                                         oncreateinvoice={() => {
                                                 quickAddType = 'invoice';
                                                 quickAddOpen = true;
@@ -601,8 +610,13 @@
 <QuickAddModal
 	open={quickAddOpen}
 	initialType={quickAddType}
-	initialClientId={view === 'project' && project ? project.clientId : ''}
+	initialClientId={view === 'client' && client
+		? client.id
+		: view === 'project' && project
+			? project.clientId
+			: ''}
 	initialProjectId={view === 'project' && project ? project.id : ''}
+	lockProjectClient={view === 'client' && Boolean(client) && quickAddType === 'project'}
 	clients={store.clients.map((c) => ({
 		id: c.id,
 		name: c.name,
@@ -613,6 +627,10 @@
 			role: contact.role,
 			primary: contact.primary
 		}))
+	}))}
+	invoices={store.invoices.map((invoice) => ({
+		projectId: invoice.projectId,
+		invoiceIdentifier: invoice.invoiceIdentifier
 	}))}
 	projects={store.projects.map((p) => ({
 		id: p.id,
