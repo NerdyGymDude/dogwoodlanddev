@@ -36,6 +36,12 @@ $effect(() => {
 		formEmail = primary?.email ?? contactsWithEmail[0]?.email ?? '';
 	
 	}
+	if (modal === 'editclient' && client) {
+		formName = client.name;
+		formEmail = client.email;
+		formPhone = client.phone;
+		formDescription = client.notes;
+	}
 	
 });
 
@@ -83,6 +89,7 @@ $effect(() => {
 		if (modal === 'client' && formName) {
 			store.addClient({
 				name: formName,
+				shortName: formName,
 				type: 'Company',
 				email: formEmail,
 				phone: formPhone,
@@ -236,6 +243,12 @@ $effect(() => {
     {/if}
 </label>
 				{:else if modal === 'client' || modal === 'editclient'}
+					{#if modal === 'editclient' && client}
+						<label>
+							Short Name
+							<input value={client.shortName} readonly aria-readonly="true" />
+						</label>
+					{/if}
 					<label>
 						Email
 						<input type="email" bind:value={formEmail} placeholder="name@example.com" />

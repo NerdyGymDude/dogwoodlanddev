@@ -15,7 +15,14 @@
 <FormSection title="Client Details" description="Business or individual client information.">
 	<FormGrid>
 		<FormField label="Company / Client Name" forId="client-company" required>
-			<input id="client-company" bind:value={value.companyName} />
+			<input id="client-company" bind:value={value.companyName} required />
+		</FormField>
+
+		<FormField label="Short Name" forId="client-short-name" required>
+			<div class="short-name-field">
+				<input id="client-short-name" bind:value={value.shortName} required />
+				<button type="button" onclick={() => (value.shortName = value.companyName)}>Use Client Name</button>
+			</div>
 		</FormField>
 
 		<FormField label="Status" forId="client-status">
@@ -29,6 +36,12 @@
 		</FormField>
 	</FormGrid>
 </FormSection>
+
+<style>
+	.short-name-field { display: flex; gap: .55rem; }
+	.short-name-field input { min-width: 0; flex: 1; }
+	.short-name-field button { flex: 0 0 auto; border: 1px solid #cdd5cc; border-radius: .65rem; background: #fff; padding: 0 .8rem; color: #526057; font: inherit; font-weight: 700; cursor: pointer; }
+</style>
 
 <FormSection title="Primary Contact" description="Main point of contact for this client.">
 	<FormGrid>

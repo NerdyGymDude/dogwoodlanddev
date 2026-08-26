@@ -66,6 +66,8 @@
                         <div>
                             <h3>{invoice.subject || project?.name || 'Invoice'}</h3>
                             <p>
+								{invoice.invoiceIdentifier}
+								{#if invoice.invoiceIdentifier} · {/if}
                                 {client?.name ?? 'Client unavailable'}
                                 {#if project} · {project.name}{/if}
                             </p>

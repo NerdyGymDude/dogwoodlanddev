@@ -8,11 +8,15 @@
 
 	let {
 		value,
-		clients = []
+		clients = [],
+		clientLocked = false
 	}: {
 		value: ProjectFormData;
 		clients?: Array<{ id: string; name: string }>;
+		clientLocked?: boolean;
 	} = $props();
+
+	const selectedClient = $derived(clients.find((client) => client.id === value.clientId));
 </script>
 
 <FormSection
@@ -21,12 +25,16 @@
 >
 	<FormGrid>
 		<FormField label="Client" forId="project-client">
-			<select id="project-client" bind:value={value.clientId}>
-				<option value="">No client selected</option>
-				{#each clients as client}
-					<option value={client.id}>{client.name}</option>
-				{/each}
-			</select>
+			{#if clientLocked}
+				<div class="read-only-value" id="project-client">{selectedClient?.name ?? 'Client unavailable'}</div>
+			{:else}
+				<select id="project-client" bind:value={value.clientId}>
+					<option value="">No client selected</option>
+					{#each clients as client}
+						<option value={client.id}>{client.name}</option>
+					{/each}
+				</select>
+			{/if}
 		</FormField>
 
 		<FormField label="Project Name" forId="project-name" required>
@@ -141,6 +149,16 @@
 </FormSection>
 
 <style>
+	.read-only-value {
+		min-height: 44px;
+		box-sizing: border-box;
+		border: 1px solid #dfe5df;
+		border-radius: .65rem;
+		background: #f6f8f5;
+		padding: .72rem .8rem;
+		color: #34483a;
+	}
+
 	.share-toggle {
 		display: flex;
 		align-items: flex-start;

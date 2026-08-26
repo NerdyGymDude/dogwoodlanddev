@@ -69,14 +69,6 @@
 					<b>→</b>
 				</button>
 			{/each}
-		{:else}
-			<div class="empty">
-				<strong>New inquiry</strong>
-				<p>No project created yet. Preserve this information when converting.</p>
-				<button class="primary" onclick={oncreateproject}>
-					Convert to client & create project
-				</button>
-			</div>
 		{/if}
 	</section>
 

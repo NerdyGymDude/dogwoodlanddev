@@ -169,13 +169,47 @@ export async function createProject(
 	const name = form.title.trim();
 
 	if (!name) throw new Error('Project name is required.');
+	if (!validUuid(form.clientId)) throw new Error('A valid client is required.');
 
-	const { data, error } = await supabase
-		.from('projects')
-		.insert({
-			client_id: validUuid(form.clientId) ? form.clientId : null,
+	const { data: client, error: clientError } = await supabase
+		.from('clients')
+		.select('short_name')
+		.eq('id', form.clientId)
+		.single();
+
+	if (clientError) throw clientError;
+
+	const shortName = String(client.short_name ?? '').trim();
+	if (!shortName) throw new Error('The selected client does not have a Short Name.');
+
+	const normalizedShortName = shortName.replace(/\s+/g, '-');
+	const identifierPrefix = `DLD-${normalizedShortName}-`;
+	const identifierPattern = new RegExp(
+		`^${identifierPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`,
+		'i'
+	);
+
+	for (let attempt = 0; attempt < 5; attempt += 1) {
+		const { data: history, error: historyError } = await supabase
+			.from('projects')
+			.select('project_number')
+			.eq('client_id', form.clientId)
+			.not('project_number', 'is', null);
+
+		if (historyError) throw historyError;
+
+		const nextSequence = (history ?? []).reduce((highest, row) => {
+			const match = String(row.project_number ?? '').match(identifierPattern);
+			return match ? Math.max(highest, Number(match[1])) : highest;
+		}, 0) + 1;
+		const projectNumber = `${identifierPrefix}${String(nextSequence).padStart(3, '0')}`;
+
+		const { data, error } = await supabase
+			.from('projects')
+			.insert({
+			client_id: form.clientId,
 			name,
-			project_number: form.projectNumber.trim() || null,
+			project_number: projectNumber,
 			project_type: form.projectType.trim() || null,
 			status: form.status,
 			phase: 'New',
@@ -191,13 +225,15 @@ export async function createProject(
 			assigned_to: form.assignedTo || null,
 			client_visible: form.clientVisible,
 			created_by: userId
-		})
-		.select('*')
-		.single();
+			})
+			.select('*')
+			.single();
 
-	if (error) throw error;
+		if (!error) return mapProject(data);
+		if (error.code !== '23505') throw error;
+	}
 
-	return mapProject(data);
+	throw new Error('Unable to reserve a unique Project ID. Please try again.');
 }
 
 export async function createTask(

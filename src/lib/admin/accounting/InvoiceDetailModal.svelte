@@ -49,8 +49,9 @@
 			</div>
 
 			<div class="details">
+				<div><span>Invoice Identifier</span><strong>{invoice.invoiceIdentifier || 'â€”'}</strong></div>
 				<div><span>Client</span><strong>{client?.name ?? 'â€”'}</strong></div>
-				<div><span>Project</span><strong>{project?.name ?? 'â€”'}</strong></div>
+				<div><span>Project</span><strong>{project ? `${project.projectNumber} · ${project.name}` : 'â€”'}</strong></div>
 				<div><span>Invoice Date</span><strong>{dateLabel(invoice.date)}</strong></div>
 				<div><span>Due Date</span><strong>{dateLabel(invoice.dueDate)}</strong></div>
 			</div>

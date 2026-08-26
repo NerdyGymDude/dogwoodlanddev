@@ -3,8 +3,8 @@ export type ActionState = 'New' | 'Needs Action' | 'Waiting' | 'Done';
 export type ProjectStatus = 'Active' | 'Pending' | 'Completed' | 'Cancelled';
 
 export interface Contact { id: string; name: string; role: string; email: string; phone: string; preferred: string; primary?: boolean }
-export interface Client { id: string; name: string; type: 'Person' | 'Company' | 'Inquiry'; email: string; phone: string; address: string; notes: string; contacts: Contact[]; projectIds: string[] }
-export interface Project { id: string; projectNumber: string; name: string; clientId: string; address: string; status: ProjectStatus; phase: string; summary: string; waitingOn?: string; nextMilestone: string; lastActivity: string; budget: number; invoiced: number; costs: number; createdDate: string }
+export interface Client { id: string; name: string; shortName: string; type: 'Person' | 'Company' | 'Inquiry'; email: string; phone: string; address: string; notes: string; contacts: Contact[]; projectIds: string[] }
+export interface Project { id: string; projectNumber: string; name: string; clientId: string; address: string; status: ProjectStatus; phase: string; summary: string; description: string; projectType: string; waitingOn?: string; nextMilestone: string; lastActivity: string; budget: number; invoiced: number; costs: number; startDate: string; targetCompletionDate: string; createdDate: string }
 export interface ActionItem { id: string; title: string; detail: string; state: ActionState; priority: 'High' | 'Medium' | 'Low'; due: string; age: string; projectId?: string; clientId?: string; source: string }
 export interface Task { id: string; title: string; projectId?: string; clientId?: string; due: string; priority: string; status: string; assignee: string }
 export interface MailThread { id: string; mailbox: string; sender: string; email: string; subject: string; preview: string; time: string; unread: boolean; projectId?: string; clientId?: string; messages: { from: string; body: string; time: string }[] }
@@ -14,6 +14,8 @@ export interface Vendor { id: string; name: string; category: string; contact: s
 
 export interface Invoice {
     id: string;
+	invoiceIdentifier: string;
+	sentAt: string;
     clientId: string;
     projectId?: string;
     subject: string;

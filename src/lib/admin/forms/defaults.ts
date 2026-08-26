@@ -36,6 +36,7 @@ export function createBaseForm(): AdminFormBase {
 export function createClientForm(): ClientFormData {
 	return {
 		companyName: '',
+		shortName: '',
 		status: 'new',
 
 		primaryContactName: '',

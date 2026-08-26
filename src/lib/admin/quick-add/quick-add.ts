@@ -8,7 +8,7 @@ export interface QuickAddOption {
 	mobilePriority: boolean;
 }
 
-export const quickAddOptions: QuickAddOption[] = [
+export const quickAddOptions = ([
 	{
 		type: 'client',
 		label: 'Client',
@@ -37,4 +37,4 @@ export const quickAddOptions: QuickAddOption[] = [
 		icon: '💵',
 		mobilePriority: true
 	}
-];
+] satisfies QuickAddOption[]).filter((option) => option.type !== 'task');

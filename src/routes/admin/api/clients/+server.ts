@@ -28,15 +28,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		return json({ client }, { status: 201 });
 	} catch (error) {
 		console.error('Unable to create client:', error);
+		const message = error instanceof Error ? error.message : 'Unable to create client.';
 
 		return json(
-			{
-				error:
-					error instanceof Error
-						? error.message
-						: 'Unable to create client.'
-			},
-			{ status: 500 }
+			{ error: message },
+			{ status: message.includes('already in use') ? 409 : 500 }
 		);
 	}
 };
