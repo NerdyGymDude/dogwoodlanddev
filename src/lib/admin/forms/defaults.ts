@@ -13,7 +13,9 @@ import type {
 } from './types';
 
 function today() {
-	return new Date().toISOString().slice(0, 10);
+	const date = new Date();
+	const offset = date.getTimezoneOffset() * 60_000;
+	return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 }
 
 export function createBaseForm(): AdminFormBase {
@@ -107,14 +109,15 @@ export function createEstimateForm(): EstimateFormData {
 
 export function createInvoiceForm(): InvoiceFormData {
 	return {
-		...createBaseForm(),
-		status: 'draft',
-		invoiceNumber: '',
+		clientId: '',
+		projectId: '',
+		subject: '',
+		date: today(),
+		status: 'Billed - Not Paid',
 		dueDate: '',
-		lineItems: [],
-		discount: '',
-		taxRate: 0,
-		paymentStatus: 'unpaid'
+		amount: '',
+		recipientContactIds: [],
+		attachments: []
 	};
 }
 

@@ -1,9 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { sendZohoMail } from '$lib/server/integrations/zoho-mail';
+import { requireActiveStaff } from '$lib/server/admin/authorization';
 
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ locals }) => {
+	await requireActiveStaff(locals);
+
 	try {
 		await sendZohoMail({
 			from: 'branch@dogwoodlanddev.com',

@@ -1,8 +1,10 @@
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
+import { getActiveStaff } from '$lib/server/admin/authorization';
 
 export const load: LayoutServerLoad = async ({ locals, url }) => {
-	const { session, user } = await locals.safeGetSession();
+	const authorization = await getActiveStaff(locals);
+	const { session, user } = authorization;
 
 	const isLoginPage = url.pathname === '/admin/login';
 
@@ -10,12 +12,17 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		throw redirect(303, '/admin/login');
 	}
 
-	if (user && isLoginPage) {
+	if (authorization.authorized && isLoginPage) {
 		throw redirect(303, '/admin');
+	}
+
+	if (user && !isLoginPage && !authorization.authorized) {
+		throw error(403, 'Active staff access is required.');
 	}
 
 	return {
 		session,
-		user
+		user,
+		profile: authorization.profile
 	};
 };

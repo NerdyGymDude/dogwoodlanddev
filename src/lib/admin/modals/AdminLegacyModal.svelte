@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { adminStore as store } from '$lib/admin/store.svelte';
-	import type { Project, ProjectStatus } from '$lib/admin/types';
+	import type { Client, Project, ProjectStatus } from '$lib/admin/types';
 
 	let {
 		modal,
 		project,
+		client,
 		onclose,
 		onsaved
 	}: {
 		modal: string;
 		project?: Project;
+		client?: Client;
 		onclose: () => void;
 		onsaved: () => void;
 	} = $props();
@@ -21,6 +23,21 @@
 	let formDescription = $state('');
 	let formFromEmail = $state('branch@dogwoodlanddev.com');
 	let emailSending = $state(false);
+
+	
+$effect(() => {
+	
+	if (modal === 'email' && client) {
+	
+		const contactsWithEmail = client.contacts.filter((contact) => contact.email);
+	
+		const primary = contactsWithEmail.find((contact) => contact.primary);
+	
+		formEmail = primary?.email ?? contactsWithEmail[0]?.email ?? '';
+	
+	}
+	
+});
 
 	async function save() {
 		if (modal === 'email') {
@@ -96,7 +113,7 @@
 				void save();
 			}}
 		>
-			<button type="button" class="close" onclick={onclose}>×</button>
+			<button type="button" class="close" onclick={onclose}>&times;</button>
 
 			<p class="eyebrow">QUICK ACTION</p>
 
@@ -170,7 +187,7 @@
 						<input
 							bind:value={formTitle}
 							required={modal === 'email'}
-							placeholder={modal === 'email' ? 'Email subject' : 'Enter details'}
+							placeholder={modal === 'email' ? 'Write your message...' : 'Add context or notes...'}
 						/>
 					{/if}
 				</label>
@@ -180,29 +197,44 @@
 						From
 						<select bind:value={formFromEmail}>
 							<option value="branch@dogwoodlanddev.com">
-								Branch — branch@dogwoodlanddev.com
+								Branch &mdash; branch@dogwoodlanddev.com
 							</option>
 							<option value="office@dogwoodlanddev.com">
-								Office — office@dogwoodlanddev.com
+								Office &mdash; office@dogwoodlanddev.com
 							</option>
 							<option value="accounting@dogwoodlanddev.com">
-								Accounting — accounting@dogwoodlanddev.com
+								Accounting &mdash; accounting@dogwoodlanddev.com
 							</option>
 							<option value="permitting@dogwoodlanddev.com">
-								Permitting — permitting@dogwoodlanddev.com
+								Permitting &mdash; permitting@dogwoodlanddev.com
 							</option>
 						</select>
 					</label>
 
 					<label>
-						To
-						<input
-							type="email"
-							required
-							bind:value={formEmail}
-							placeholder="name@example.com"
-						/>
-					</label>
+    To
+
+    {#if client}
+        <select bind:value={formEmail} required>
+            {#each client.contacts.filter((contact) => contact.email) as contact}
+                <option value={contact.email}>
+                    {contact.name} — {contact.primary ? 'Primary' : contact.role} — {contact.email}
+                </option>
+            {/each}
+        </select>
+
+        {#if !client.contacts.some((contact) => contact.email)}
+            <small>No contacts for this client have an email address.</small>
+        {/if}
+    {:else}
+        <input
+            type="email"
+            required
+            bind:value={formEmail}
+            placeholder="name@example.com"
+        />
+    {/if}
+</label>
 				{:else if modal === 'client' || modal === 'editclient'}
 					<label>
 						Email
@@ -220,7 +252,7 @@
 					<textarea
 						bind:value={formDescription}
 						rows="4"
-						placeholder={modal === 'email' ? 'Write your message…' : 'Add context or notes…'}
+						placeholder={modal === 'email' ? 'Write your message...' : 'Add context or notes...'}
 					></textarea>
 				</label>
 
@@ -229,7 +261,7 @@
 					type="submit"
 					disabled={modal === 'email' && emailSending}
 				>
-					{modal === 'email' ? (emailSending ? 'Sending…' : 'Send email') : 'Save'}
+					{modal === 'email' ? (emailSending ? 'Sending...' : 'Send email') : 'Save'}
 				</button>
 			{/if}
 		</form>

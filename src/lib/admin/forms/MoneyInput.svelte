@@ -34,37 +34,25 @@
 </div>
 
 <style>
-	.money-input {
-		display: flex;
-		align-items: center;
-		width: 100%;
-		box-sizing: border-box;
-		border: 1px solid #ccd3cc;
-		border-radius: 0.65rem;
-		background: #fff;
-		overflow: hidden;
-	}
+    .money-input {
+        position: relative;
+        width: 100%;
+    }
 
-	.money-input:focus-within {
-		outline: 2px solid rgba(92, 115, 80, 0.2);
-		border-color: #5c7350;
-	}
+    .money-input span {
+        position: absolute;
+        left: 0.8rem;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 1;
+        pointer-events: none;
+        font-weight: 600;
+        color: #69736b;
+    }
 
-	span {
-		padding-left: 0.8rem;
-		font-weight: 600;
-		color: #69736b;
-	}
-
-	input {
-		min-width: 0;
-		width: 100%;
-		box-sizing: border-box;
-		border: 0;
-		outline: 0;
-		background: transparent;
-		padding: 0.72rem 0.8rem 0.72rem 0.35rem;
-		font: inherit;
-		color: #253329;
-	}
+    .money-input input {
+        width: 100%;
+        box-sizing: border-box;
+        padding-left: 1.8rem;
+    }
 </style>

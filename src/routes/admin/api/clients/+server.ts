@@ -2,16 +2,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { ClientFormData } from '$lib/admin/forms/types';
 import { createClient } from '$lib/server/admin/clients';
+import { requireActiveStaff } from '$lib/server/admin/authorization';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-	const { user } = await locals.safeGetSession();
-
-	if (!user) {
-		return json(
-			{ error: 'You must be signed in.' },
-			{ status: 401 }
-		);
-	}
+	const { user } = await requireActiveStaff(locals);
 
 	let form: ClientFormData;
 
@@ -48,14 +42,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, url }) => {
-        const { user } = await locals.safeGetSession();
-
-        if (!user) {
-                return json(
-                        { error: 'You must be signed in.' },
-                        { status: 401 }
-                );
-        }
+	await requireActiveStaff(locals);
 
         const clientId = url.searchParams.get('id');
 
