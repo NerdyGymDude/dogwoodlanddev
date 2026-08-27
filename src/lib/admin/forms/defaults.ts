@@ -114,9 +114,10 @@ export function createInvoiceForm(): InvoiceFormData {
 		projectId: '',
 		subject: '',
 		date: today(),
-		status: 'Billed - Not Paid',
+		status: 'Draft',
 		dueDate: '',
 		amount: '',
+		taskLines: [],
 		recipientContactIds: [],
 		attachments: []
 	};

@@ -10,13 +10,7 @@ export type AdminRecordType =
 	| 'event'
 	| 'note';
 
-export type AdminRecordStatus =
-	| 'new'
-	| 'active'
-	| 'pending'
-	| 'completed'
-	| 'canceled'
-	| 'draft';
+export type AdminRecordStatus = 'new' | 'active' | 'pending' | 'completed' | 'canceled' | 'draft';
 
 export interface AdminFormBase {
 	clientId: string;
@@ -99,10 +93,27 @@ export interface EstimateFormData extends AdminFormBase {
 }
 
 export type InvoiceStatus =
+	| 'Draft'
 	| 'Not Billed'
 	| 'Billed - Not Paid'
 	| 'Billed - Partial Payment'
-	| 'Billed - Paid';
+	| 'Billed - Paid'
+	| 'Updated - Resend Required';
+
+export interface InvoiceTaskLineFormData {
+	id: string;
+	projectBillingTaskId?: string;
+	included: boolean;
+	description: string;
+	taskTotal: string;
+	previouslyBilledPercentage: number;
+	previouslyBilledAmount: number;
+	paidAmount: number | null;
+	billNowPercentage: number;
+	currentDue: number;
+	amountDueInput?: string;
+	displayOrder: number;
+}
 
 export interface InvoiceFormData {
 	clientId: string;
@@ -112,6 +123,7 @@ export interface InvoiceFormData {
 	status: InvoiceStatus;
 	dueDate: string;
 	amount: string;
+	taskLines: InvoiceTaskLineFormData[];
 	recipientContactIds: string[];
 	attachments: File[];
 }
