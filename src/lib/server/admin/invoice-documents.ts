@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { read } from '$app/server';
+import invoiceTemplate from './assets/dogwood-sample-invoice.pdf';
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from 'pdf-lib';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { calculateFinancialTotals, loadProjectFinancialState, mapFinancialDocument } from './accounting';
@@ -18,7 +18,8 @@ function drawRightAligned(page: PDFPage, value: string, right: number, y: number
 }
 
 export async function renderInvoicePdf(input: { project: any; document: any; lines: any[]; documentKind?: 'invoice' | 'receipt'; paymentReceived?: number }) {
-	const template = await readFile(join(process.cwd(), 'static', 'pdfs', 'dogwood-sample-invoice.pdf'));
+	const templateResponse = read(invoiceTemplate);
+	const template = new Uint8Array(await templateResponse.arrayBuffer());
 	const pdf = await PDFDocument.load(template);
 	const font = await pdf.embedFont(StandardFonts.Helvetica);
 	const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
