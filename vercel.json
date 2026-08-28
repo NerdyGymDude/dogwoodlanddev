@@ -1,7 +1,0 @@
-﻿{
-  "functions": {
-    ".svelte-kit/output/server/**": {
-      "includeFiles": "static/pdfs/dogwood-sample-invoice.pdf"
-    }
-  }
-}
