@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { adminStore as store } from '$lib/admin/store.svelte';
-	import type { Client, Project, ProjectStatus } from '$lib/admin/types';
+	import type { Client, Project } from '$lib/admin/types';
 
 	let {
 		modal,
@@ -225,29 +225,10 @@
 
 			{#if modal === 'editproject' && project}
 				<label>
-					Status
-					<select
-						value={project.status}
-						onchange={(event) =>
-							store.updateProject(
-								project.id,
-								event.currentTarget.value as ProjectStatus,
-								project.phase
-							)}
-					>
-						<option>Active</option>
-						<option>Pending</option>
-						<option>Completed</option>
-						<option>Cancelled</option>
-					</select>
-				</label>
-
-				<label>
 					Phase
 					<select
 						value={project.phase}
-						onchange={(event) =>
-							store.updateProject(project.id, project.status, event.currentTarget.value)}
+						onchange={(event) => store.updateProject(project.id, event.currentTarget.value)}
 					>
 						{#each ['Due Diligence', 'Entitlement', 'Engineering / Design', 'Permitting', 'Construction', 'Closeout'] as phase}
 							<option>{phase}</option>

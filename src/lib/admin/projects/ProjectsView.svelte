@@ -39,25 +39,8 @@
 
 <div class="summary-strip">
 	<div>
-		<strong>{store.projects.filter((project) => project.status === 'Active').length}</strong>
-		<span>Active</span>
-	</div>
-
-	<div>
-		<strong>{store.projects.filter((project) => project.status === 'Pending').length}</strong>
-		<span>Pending</span>
-	</div>
-
-	<div>
-		<strong>
-			{store.actions.filter(
-				(action) =>
-					action.state !== 'Done' &&
-					action.projectId &&
-					store.projects.some((project) => project.id === action.projectId)
-			).length}
-		</strong>
-		<span>Needs attention</span>
+		<strong>{store.projects.length}</strong>
+		<span>Projects</span>
 	</div>
 
 	<div>
@@ -70,8 +53,6 @@
 	{#each store.projects as project}
 		<button onclick={() => onopenproject(project.id)}>
 			<div>
-				<span class="status {project.status.toLowerCase()}">{project.status}</span>
-				<small>{project.phase}</small>
 				<small>{project.projectNumber}</small>
 				<h3>{project.name}</h3>
 				<p>

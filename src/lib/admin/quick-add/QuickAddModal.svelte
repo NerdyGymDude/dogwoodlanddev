@@ -84,11 +84,13 @@
 	let documentForm = $state(createDocumentForm());
 	let eventForm = $state(createEventForm());
 	let noteForm = $state(createNoteForm());
+	let submissionError = $state('');
 
 	const selectedOption = $derived(quickAddOptions.find((option) => option.type === activeType));
 
 	$effect(() => {
 		if (open) {
+			submissionError = '';
 			selectedType = initialType;
 			if (initialType === 'project') {
 				const nextProjectForm = createProjectForm();
@@ -138,6 +140,7 @@
 
 	function choose(type: AdminRecordType) {
 		selectedType = type;
+		submissionError = '';
 	}
 
 	function back() {
@@ -150,6 +153,7 @@
 
 	function close() {
 		selectedType = initialType;
+		submissionError = '';
 		onclose();
 	}
 
@@ -157,6 +161,11 @@
 		event.preventDefault();
 
 		if (!activeType) return;
+		if (activeType === 'project' && !projectForm.clientId.trim()) {
+			submissionError = 'Client is required to create project';
+			return;
+		}
+		submissionError = '';
 
 		const values = {
 			client: clientForm,
@@ -248,6 +257,10 @@
 						{/if}
 					</div>
 
+					{#if submissionError}
+						<p class="submission-error" role="alert">{submissionError}</p>
+					{/if}
+
 					<footer class="actions">
 						<button type="button" class="secondary" onclick={back}
 							>{initialType ? 'Cancel' : '&larr; Back'}</button
@@ -267,6 +280,14 @@
 {/if}
 
 <style>
+	.submission-error {
+		margin: 0;
+		padding: 0 1.5rem 1rem;
+		color: #a44336;
+		font-size: 0.82rem;
+		font-weight: 700;
+	}
+
 	.backdrop {
 		position: fixed;
 		inset: 0;

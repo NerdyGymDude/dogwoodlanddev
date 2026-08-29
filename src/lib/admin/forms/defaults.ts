@@ -74,8 +74,10 @@ export function createContactForm(): ContactFormData {
 }
 
 export function createProjectForm(): ProjectFormData {
+	const { clientVisible: _clientVisible, ...base } = createBaseForm();
+
 	return {
-		...createBaseForm(),
+		...base,
 		projectNumber: '',
 		projectType: '',
 		address: '',

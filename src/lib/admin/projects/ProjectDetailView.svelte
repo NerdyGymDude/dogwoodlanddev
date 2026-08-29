@@ -13,6 +13,7 @@
 		financialDocuments,
 		onfinancialchange,
 		onedit,
+		onremove,
 		money
 	}: {
 		project: Project;
@@ -25,6 +26,7 @@
 		financialDocuments: FinancialDocument[];
 		onfinancialchange: (kind: 'task' | 'payment' | 'allocation' | 'document', value: FinancialTask | ProjectPayment | ProjectPaymentAllocation | FinancialDocument) => void;
 		onedit: () => void;
+		onremove: () => void;
 		money: (value: number) => string;
 	} = $props();
 
@@ -201,7 +203,6 @@
 <section class="project-hero compact-card">
 	<div class="identity">
 		<div class="tags">
-			<span class="status {project.status.toLowerCase()}">{project.status}</span>
 			<span>{project.phase}</span>
 		</div>
 		<p class="project-number">{project.projectNumber}</p>
@@ -216,6 +217,7 @@
 	<div class="hero-actions">
 		<button onclick={openCompose}>Compose Email</button>
 		<button class="primary" onclick={onedit}>Edit Project</button>
+		<button onclick={onremove}>Remove Project</button>
 	</div>
 </section>
 

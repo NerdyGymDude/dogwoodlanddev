@@ -56,7 +56,6 @@
 			{#each store.projects.filter((project) => project.clientId === client.id) as project}
 				<button class="project-row" onclick={() => onopenproject(project.id)}>
 					<div>
-						<span class="status {project.status.toLowerCase()}">{project.status}</span>
 						<h3>{project.name}</h3>
 						<p>{project.phase} · {project.address}</p>
 					</div>

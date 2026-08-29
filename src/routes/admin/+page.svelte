@@ -31,7 +31,7 @@
 		ProjectFormData,
 		TaskFormData
 	} from '$lib/admin/forms/types';
-	import type { Client, FinancialDocument, FinancialTask, Invoice, ProjectPayment, ProjectPaymentAllocation, ProjectStatus } from '$lib/admin/types';
+	import type { Client, FinancialDocument, FinancialTask, Invoice, ProjectPayment, ProjectPaymentAllocation } from '$lib/admin/types';
 	import type { PageData } from './$types';
 
 	type InboxSearchMessage = {
@@ -260,14 +260,6 @@
 		}).format(date);
 	}
 
-	function projectStatus(value: string): ProjectStatus {
-		if (value === 'active') return 'Active';
-		if (value === 'completed') return 'Completed';
-		if (value === 'canceled') return 'Cancelled';
-
-		return 'Pending';
-	}
-
 	function projectRecordFromApi(record: any) {
 		return {
 			id: record.id,
@@ -275,7 +267,6 @@
 			name: record.name,
 			clientId: record.clientId || '',
 			address: [record.address, record.city, record.state, record.zip].filter(Boolean).join(', '),
-			status: projectStatus(record.status),
 			phase: record.phase || 'New',
 			summary: record.description || record.notes || '',
 			description: record.description || '',
@@ -535,6 +526,9 @@
 					onopenclient={openClient}
 					ongoto={go}
 					onquickadd={(type) => openQuickAdd(type ?? null)}
+					financialTasks={projectBillingTasks}
+					payments={projectPayments}
+					{financialDocuments}
 				/>
 			{:else if view === 'clients'}
 				<ClientsView onopenclient={openClient} onquickadd={() => openQuickAdd('client')} />
@@ -581,6 +575,23 @@
 					financialDocuments={financialDocuments.filter((item) => item.projectId === project.id)}
 					onfinancialchange={updateFinancialRecord}
 					onedit={() => (modal = 'editproject')}
+					onremove={async () => {
+						if (!confirm(`Remove project "${project.name}"? This cannot be undone.`)) return;
+
+						const response = await fetch(`/admin/api/projects?id=${encodeURIComponent(project.id)}`, {
+							method: 'DELETE'
+						});
+						const result = await response.json().catch(() => ({}));
+
+						if (!response.ok) {
+							store.notify(result.error || 'Unable to remove project');
+							return;
+						}
+
+						store.removePersistedProject(project.id);
+						store.notify(`${project.name} removed`);
+						go('projects');
+					}}
 					{money}
 				/>
 			{:else if view === 'inbox'}

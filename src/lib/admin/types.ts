@@ -1,6 +1,5 @@
 ﻿export type Role = 'Super User' | 'Admin' | 'Accounting' | 'User' | 'Client';
 export type ActionState = 'New' | 'Needs Action' | 'Waiting' | 'Done';
-export type ProjectStatus = 'Active' | 'Pending' | 'Completed' | 'Cancelled';
 
 export interface Contact {
 	id: string;
@@ -29,7 +28,6 @@ export interface Project {
 	name: string;
 	clientId: string;
 	address: string;
-	status: ProjectStatus;
 	phase: string;
 	summary: string;
 	description: string;

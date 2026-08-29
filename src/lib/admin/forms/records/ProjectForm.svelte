@@ -24,11 +24,11 @@
 	description="Create the project and connect it to the appropriate Dogwood client."
 >
 	<FormGrid>
-		<FormField label="Client" forId="project-client">
+		<FormField label="Client" forId="project-client" required>
 			{#if clientLocked}
 				<div class="read-only-value" id="project-client">{selectedClient?.name ?? 'Client unavailable'}</div>
 			{:else}
-				<select id="project-client" bind:value={value.clientId}>
+				<select id="project-client" bind:value={value.clientId} aria-required="true">
 					<option value="">No client selected</option>
 					{#each clients as client}
 						<option value={client.id}>{client.name}</option>
@@ -46,15 +46,6 @@
 			/>
 		</FormField>
 
-		<FormField label="Status" forId="project-status">
-			<select id="project-status" bind:value={value.status}>
-				<option value="new">New</option>
-				<option value="active">Active</option>
-				<option value="pending">Pending</option>
-				<option value="completed">Completed</option>
-				<option value="canceled">Canceled</option>
-			</select>
-		</FormField>
 	</FormGrid>
 
 	<FormField label="Description" forId="project-description">
@@ -133,21 +124,6 @@
 	<AttachmentsField bind:files={value.attachments} />
 </FormSection>
 
-<FormSection
-	title="Client Sharing"
-	description="Control whether the client receives access to this project's overview."
->
-	<label class="share-toggle">
-		<input type="checkbox" bind:checked={value.clientVisible} />
-		<span>
-			<strong>Share with client</strong>
-			<small>
-				Make this project available to the client and send them the project overview.
-			</small>
-		</span>
-	</label>
-</FormSection>
-
 <style>
 	.read-only-value {
 		min-height: 44px;
@@ -157,35 +133,5 @@
 		background: #f6f8f5;
 		padding: .72rem .8rem;
 		color: #34483a;
-	}
-
-	.share-toggle {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.7rem;
-		padding: 0.85rem;
-		border: 1px solid #e0e5df;
-		border-radius: 0.7rem;
-		background: #f8faf7;
-		cursor: pointer;
-	}
-
-	.share-toggle input {
-		margin-top: 0.2rem;
-	}
-
-	.share-toggle span {
-		display: grid;
-		gap: 0.15rem;
-	}
-
-	.share-toggle strong {
-		font-size: 0.84rem;
-		color: #314336;
-	}
-
-	.share-toggle small {
-		font-size: 0.75rem;
-		color: #737d75;
 	}
 </style>

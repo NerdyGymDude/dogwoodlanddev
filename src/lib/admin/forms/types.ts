@@ -60,7 +60,7 @@ export interface ContactFormData extends AdminFormBase {
 	jobTitle: string;
 }
 
-export interface ProjectFormData extends AdminFormBase {
+export type ProjectFormData = Omit<AdminFormBase, 'clientVisible'> & {
 	projectNumber: string;
 	projectType: string;
 	address: string;
@@ -70,7 +70,7 @@ export interface ProjectFormData extends AdminFormBase {
 	startDate: string;
 	targetCompletionDate: string;
 	budget: string;
-}
+};
 
 export interface TaskFormData extends AdminFormBase {
 	dueDate: string;
