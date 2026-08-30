@@ -6,11 +6,20 @@ import { sendZohoMail, validateEmailAttachments } from '$lib/server/integrations
 const html = (value: string) =>
 	value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
 
+const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
 export const POST: RequestHandler = async ({ locals, params, request }) => {
 	await requireActiveStaff(locals);
 	const body = await request.formData().catch(() => null);
 	const message = String(body?.get('message') ?? '').trim();
+	const recipientEmail = String(body?.get('recipientEmail') ?? '').trim().toLowerCase();
+	const sendToClient = body?.get('sendToClient') === 'true';
+	const saveToClientId = String(body?.get('saveToClientId') ?? '').trim();
 	if (!message) return json({ error: 'Invoice email body is required.' }, { status: 400 });
+	if (recipientEmail && !validEmail(recipientEmail))
+		return json({ error: 'Enter a valid recipient email address.' }, { status: 400 });
+	if (!recipientEmail && !sendToClient)
+		return json({ error: 'Enter an email or select Send to Client.' }, { status: 400 });
 	let attachments: File[];
 	try {
 		attachments = validateEmailAttachments(body?.getAll('attachments') ?? []);
@@ -29,23 +38,19 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		.eq('id', params.id)
 		.single();
 	if (invoiceError || !invoice) return json({ error: 'Invoice not found.' }, { status: 404 });
-	const contactIds = Array.isArray(invoice.recipient_contact_ids)
-		? invoice.recipient_contact_ids
-		: [];
-	if (!contactIds.length)
-		return json({ error: 'This invoice has no selected recipients.' }, { status: 400 });
-
-	const { data: contacts, error: contactError } = await locals.supabase
-		.from('client_contacts')
-		.select('id, email')
-		.eq('client_id', invoice.client_id)
-		.in('id', contactIds);
+	const { data: contacts, error: contactError } = sendToClient
+		? await locals.supabase
+				.from('client_contacts')
+				.select('email')
+				.eq('client_id', invoice.client_id)
+				.eq('contact_type', 'primary')
+		: { data: [], error: null };
 	if (contactError) return json({ error: 'Unable to load invoice recipients.' }, { status: 500 });
 	const recipients = [
 		...new Set(
-			(contacts ?? [])
+			[recipientEmail, ...(contacts ?? []).map((contact) => contact.email)]
 				.map((contact) =>
-					String(contact.email ?? '')
+					String(contact ?? '')
 						.trim()
 						.toLowerCase()
 				)
@@ -54,7 +59,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	];
 	if (!recipients.length)
 		return json(
-			{ error: 'The selected invoice contacts do not have email addresses.' },
+			{ error: 'The client primary contact does not have an email address.' },
 			{ status: 400 }
 		);
 
@@ -72,6 +77,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			{ error: error instanceof Error ? error.message : 'Zoho could not send the invoice email.' },
 			{ status: 502 }
 		);
+	}
+
+	if (recipientEmail && saveToClientId) {
+		const { error: saveError } = await locals.supabase
+			.from('client_invoice_emails')
+			.upsert({ client_id: saveToClientId, email: recipientEmail }, { onConflict: 'client_id,email' });
+		if (saveError) console.error('Invoice recipient save failed:', saveError);
 	}
 
 	const sentAt = new Date().toISOString();

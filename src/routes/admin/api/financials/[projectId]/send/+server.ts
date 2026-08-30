@@ -8,7 +8,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const { user } = await requireActiveStaff(locals);
 	try {
 		const body = await request.json();
-		const document = await createAndSendInvoice(createSupabaseAdminClient(), user.id, params.projectId, Array.isArray(body.recipientContactIds) ? body.recipientContactIds : [], String(body.message ?? ''));
+		const document = await createAndSendInvoice(createSupabaseAdminClient(), user.id, params.projectId, Array.isArray(body.recipientContactIds) ? body.recipientContactIds : [], String(body.message ?? ''), Array.isArray(body.recipientEmails) ? body.recipientEmails.map(String) : [], String(body.saveToClientId ?? ''));
 		return json({ document }, { status: 201 });
 	} catch (error) {
 		console.error('Unable to send financial invoice:', error);

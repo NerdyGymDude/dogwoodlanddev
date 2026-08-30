@@ -162,11 +162,13 @@ export async function createAndSendReceipt(admin: SupabaseClient, userId: string
 	return mapFinancialDocument({ ...sent, financial_document_lines: lines });
 }
 
-export async function createAndSendInvoice(admin: SupabaseClient, userId: string, projectId: string, recipientContactIds: string[], message: string) {
+export async function createAndSendInvoice(admin: SupabaseClient, userId: string, projectId: string, recipientEmails: string[] | string, message: string, manualRecipientEmails: string[] = [], saveToClientId = '') {
 	const state = await loadProjectFinancialState(admin, projectId);
 	if (!state.tasks.length) throw new Error('Add at least one financial task before sending an invoice.');
-	const ids = [...new Set(recipientContactIds)].filter(Boolean);
-	if (!ids.length) throw new Error('Select at least one invoice recipient.');
+	const ids = [...new Set(Array.isArray(recipientEmails) ? recipientEmails : [])].filter(Boolean);
+	const manualEmails = [...new Set(manualRecipientEmails.map((email) => email.trim().toLowerCase()).filter(Boolean))];
+	if (manualEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('Enter a valid invoice email address.');
+	if (!ids.length && !manualEmails.length) throw new Error('Choose an email or select Send to Client.');
 	const [{ data: contacts, error: contactError }, { data: projectDetails, error: projectError }, { data: clientDetails, error: clientError }] = await Promise.all([
 		admin.from('client_contacts').select('id, name, email').eq('client_id', state.project.client_id).in('id', ids),
 		admin.from('projects').select('name, description, address, city, state, zip').eq('id', projectId).single(),
@@ -175,8 +177,9 @@ export async function createAndSendInvoice(admin: SupabaseClient, userId: string
 	if (contactError) throw contactError;
 	if (projectError) throw projectError;
 	if (clientError) throw clientError;
-	const recipients = (contacts ?? []).map((contact) => String(contact.email ?? '').trim()).filter(Boolean);
-	if (recipients.length !== ids.length) throw new Error('Every selected recipient must be an approved project contact with an email address.');
+	const contactRecipients = (contacts ?? []).map((contact) => String(contact.email ?? '').trim().toLowerCase()).filter(Boolean);
+	if (contactRecipients.length !== ids.length) throw new Error('Every selected recipient must be an approved project contact with an email address.');
+	const recipients = [...new Set([...contactRecipients, ...manualEmails])];
 	const totals = calculateFinancialTotals(state.tasks, state.payments);
 	const { data: document, error: documentError } = await admin.from('financial_documents').insert({ project_id: projectId, document_type: 'invoice', total_project_invoice: totals.totalProjectInvoice, amount_paid_to_date: totals.amountPaidToDate, amount_due: totals.amountDue, recipient_contact_ids: ids, created_by: userId }).select('*').single();
 	if (documentError) throw documentError;
@@ -193,6 +196,10 @@ export async function createAndSendInvoice(admin: SupabaseClient, userId: string
 	if (storedError) throw storedError;
 	const attachmentBytes = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 	await sendZohoMail({ from: 'accounting@dogwoodlanddev.com', to: recipients.join(','), subject: `Invoice - ${state.project.project_number ?? state.project.name}`, content: buildInvoiceEmailContent(document, message), attachments: [new File([attachmentBytes], 'invoice.pdf', { type: 'application/pdf' })] });
+	if (manualEmails.length && saveToClientId) {
+		const { error: saveError } = await admin.from('client_invoice_emails').upsert(manualEmails.map((email) => ({ client_id: saveToClientId, email })), { onConflict: 'client_id,email' });
+		if (saveError) console.error('Invoice recipient save failed:', saveError);
+	}
 	const sentAt = new Date().toISOString();
 	const { data: sent, error: sentError } = await admin.from('financial_documents').update({ sent_at: sentAt }).eq('id', document.id).select('*').single();
 	if (sentError) throw new Error('Email was sent, but the sent timestamp could not be saved.');

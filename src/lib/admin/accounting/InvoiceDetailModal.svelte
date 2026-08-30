@@ -25,6 +25,29 @@
 	let sendError = $state('');
 	let emailAttachments = $state<File[]>([]);
 	let attachmentInput = $state<HTMLInputElement>();
+	let recipientEmail = $state('');
+	let sendToClient = $state(true);
+	let saveToClientId = $state('');
+	let savedInvoiceEmails = $state<Array<{ client_id: string; email: string }>>([]);
+	let initializedInvoiceId = $state('');
+
+	$effect(() => {
+		if (!invoice || invoice.id === initializedInvoiceId) return;
+		initializedInvoiceId = invoice.id;
+		recipientEmail = '';
+		sendToClient = true;
+		saveToClientId = invoice.clientId;
+		fetch('/admin/api/client-invoice-emails')
+			.then((response) => (response.ok ? response.json() : { emails: [] }))
+			.then((result) => (savedInvoiceEmails = result.emails ?? []));
+	});
+
+	function selectClient(clientId: string) {
+		saveToClientId = clientId;
+		const selected = store.clients.find((item) => item.id === clientId);
+		const primary = selected?.contacts.find((contact) => contact.primary && contact.email);
+		recipientEmail = primary?.email ?? savedInvoiceEmails.find((item) => item.client_id === clientId)?.email ?? '';
+	}
 
 	function readableSize(bytes: number) {
 		return bytes < 1024 * 1024
@@ -67,6 +90,9 @@
 		try {
 			const formData = new FormData();
 			formData.set('message', emailBody);
+			formData.set('recipientEmail', recipientEmail);
+			formData.set('sendToClient', String(sendToClient));
+			formData.set('saveToClientId', saveToClientId);
 			for (const file of emailAttachments) formData.append('attachments', file);
 			const response = await fetch(`/admin/api/invoices/${encodeURIComponent(invoice.id)}/send`, {
 				method: 'POST',
@@ -146,6 +172,24 @@
 
 			<div class="email-panel">
 				<strong>Email from accounting@dogwoodlanddev.com</strong>
+				<label class="recipient-field">Client
+					<select value={saveToClientId} onchange={(event) => selectClient(event.currentTarget.value)}>
+						<option value="">Do not save to a client</option>
+						{#each store.clients as item}<option value={item.id}>{item.name}</option>{/each}
+					</select>
+				</label>
+				<div class="recipient-line">
+					<label class="recipient-field">Additional or replacement email
+						<input type="email" list="invoice-email-options" placeholder="billing@example.com" bind:value={recipientEmail} />
+						<datalist id="invoice-email-options">
+							{#each savedInvoiceEmails.filter((item) => !saveToClientId || item.client_id === saveToClientId) as item}
+								<option value={item.email}></option>
+							{/each}
+						</datalist>
+						<small>This address is saved to the selected client after a successful send.</small>
+					</label>
+					<label class="send-client"><input type="checkbox" bind:checked={sendToClient} /> <span>Send to Client<small>Also sends to {client?.name ?? 'the invoice client'}’s primary contact.</small></span></label>
+				</div>
 				<textarea rows="5" bind:value={emailBody}></textarea>
 				<label class="attachments"
 					>Attachments<input
@@ -304,6 +348,46 @@
 		font: inherit;
 		resize: vertical;
 	}
+	.recipient-field {
+		display: grid;
+		gap: 6px;
+		color: #46564c;
+		font-size: 12px;
+		font-weight: 700;
+	}
+	.recipient-line {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(190px, 0.55fr);
+		align-items: center;
+		gap: 12px;
+	}
+	.recipient-field input,
+	.recipient-field select {
+		box-sizing: border-box;
+		width: 100%;
+		border: 1px solid #d4dbd4;
+		border-radius: 7px;
+		background: #fff;
+		padding: 10px;
+		font: inherit;
+	}
+	.recipient-field small,
+	.send-client small {
+		color: #7a858d;
+		font-weight: 500;
+	}
+	.send-client {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		color: #46564c;
+		font-size: 12px;
+		font-weight: 700;
+	}
+	.send-client span,
+	.send-client small {
+		display: block;
+	}
 	.attachments {
 		display: grid;
 		gap: 6px;
@@ -394,6 +478,9 @@
 	}
 	@media (max-width: 560px) {
 		.details {
+			grid-template-columns: 1fr;
+		}
+		.recipient-line {
 			grid-template-columns: 1fr;
 		}
 	}
