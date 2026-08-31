@@ -4,13 +4,21 @@ import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from 'pdf
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { calculateFinancialTotals, loadProjectFinancialState, mapFinancialDocument } from './accounting';
 import { sendZohoMail } from '$lib/server/integrations/zoho-mail';
+import { createPaymentLinkToken } from '$lib/server/integrations/stripe';
 
 const money = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-export function buildInvoiceEmailContent(document: { total_project_invoice: unknown; amount_paid_to_date: unknown; amount_due: unknown }, note = '') {
-	const optionalNote = note.trim() && note.trim() !== 'Please find the attached invoice.' ? `<p>${escapeHtml(note.trim()).replace(/\n/g, '<br>')}</p>` : '';
-	return `<p>Please find your Dogwood Land Development invoice attached.</p>${optionalNote}<p>Total Project Invoice: ${money(Number(document.total_project_invoice))}<br>Amount Paid to Date: ${money(Number(document.amount_paid_to_date))}<br>Amount Due: ${money(Number(document.amount_due))}</p><p>To pay your invoice online, please visit:<br><a href="https://stripe.com">https://stripe.com</a></p><p>If you would like to pay by paper check, please contact accounting@dogwoodlanddev.com to make arrangements.</p><p>Thank you,<br>Dogwood Land Development</p>`;
+export function buildInvoiceEmailContent(
+    document: { total_project_invoice: unknown; amount_paid_to_date: unknown; amount_due: unknown },
+    note = '',
+    paymentUrl = ''
+) {
+    const optionalNote = note.trim() && note.trim() !== 'Please find the attached invoice.' ? `<p>${escapeHtml(note.trim()).replace(/\n/g, '<br>')}</p>` : '';
+    const paymentContent = paymentUrl
+        ? `<p>To pay your invoice online, please visit:<br><a href="${escapeHtml(paymentUrl)}">${escapeHtml(paymentUrl)}</a></p>`
+        : '';
+    return `<p>Please find your Dogwood Land Development invoice attached.</p>${optionalNote}<p>Total Project Invoice: ${money(Number(document.total_project_invoice))}<br>Amount Paid to Date: ${money(Number(document.amount_paid_to_date))}<br>Amount Due: ${money(Number(document.amount_due))}</p>${paymentContent}<p>If you would like to pay by paper check, please contact accounting@dogwoodlanddev.com to make arrangements.</p><p>Thank you,<br>Dogwood Land Development</p>`;
 }
 
 function drawRightAligned(page: PDFPage, value: string, right: number, y: number, size: number, font: PDFFont, color = rgb(0.121569, 0.160784, 0.215686)) {
@@ -102,83 +110,285 @@ export function buildReceiptEmailContent(paymentReceived: number, amountDue: num
 	return `<p>Thank you. We have received your payment.</p><p>Payment Received: ${money(paymentReceived)}<br>Amount Due: ${money(amountDue)}</p><p>Your Dogwood Land Development receipt is attached.</p><p>Thank you,<br>Dogwood Land Development</p>`;
 }
 
-export async function createAndSendReceipt(admin: SupabaseClient, userId: string, payment: { id: string; project_id: string; amount: number | string }) {
-	const { data: existingReceipt, error: existingError } = await admin.from('financial_documents').select('*, financial_document_lines(*)').eq('document_type', 'receipt').eq('source_payment_id', payment.id).maybeSingle();
-	if (existingError) throw existingError;
-	if (existingReceipt?.sent_at) return mapFinancialDocument(existingReceipt);
+export async function createAndSendReceipt(
+    admin: SupabaseClient,
+    userId: string | null,
+    payment: { id: string; project_id: string; amount: number | string },
+    sourceInvoiceId = ''
+) {
+    const { data: existingReceipt, error: existingError } = await admin
+        .from('financial_documents')
+        .select('*, financial_document_lines(*)')
+        .eq('document_type', 'receipt')
+        .eq('source_payment_id', payment.id)
+        .maybeSingle();
 
-	const { data: invoice, error: invoiceError } = await admin.from('financial_documents').select('*').eq('document_type', 'invoice').eq('project_id', payment.project_id).not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(1).maybeSingle();
-	if (invoiceError) throw invoiceError;
-	if (!invoice) throw new Error('A sent invoice is required before a receipt can be generated for this payment.');
+    if (existingError) throw existingError;
+    if (existingReceipt?.sent_at) return mapFinancialDocument(existingReceipt);
 
-	const state = await loadProjectFinancialState(admin, payment.project_id);
-	const paymentAmount = Number(payment.amount);
-	const receiptAmountDue = calculateReceiptAmountDue(Number(invoice.amount_due), paymentAmount);
-	let receipt = existingReceipt;
-	if (!receipt) {
-		const { data, error } = await admin.from('financial_documents').insert({ project_id: payment.project_id, document_type: 'receipt', source_payment_id: payment.id, total_project_invoice: Number(invoice.total_project_invoice), amount_paid_to_date: state.totals.amountPaidToDate, amount_due: receiptAmountDue, recipient_contact_ids: invoice.recipient_contact_ids ?? [], created_by: userId }).select('*').single();
-		if (error?.code === '23505') {
-			const { data: racedReceipt, error: racedError } = await admin.from('financial_documents').select('*, financial_document_lines(*)').eq('document_type', 'receipt').eq('source_payment_id', payment.id).single();
-			if (racedError) throw racedError;
-			if (racedReceipt.sent_at) return mapFinancialDocument(racedReceipt);
-			receipt = racedReceipt;
-		} else if (error) throw error;
-		else receipt = data;
-	}
+    const invoiceResult = sourceInvoiceId
+        ? await admin
+                .from('financial_documents')
+                .select('*, financial_document_lines(*)')
+                .eq('id', sourceInvoiceId)
+                .eq('document_type', 'invoice')
+                .eq('project_id', payment.project_id)
+                .not('sent_at', 'is', null)
+                .maybeSingle()
+        : await admin
+                .from('financial_documents')
+                .select('*, financial_document_lines(*)')
+                .eq('document_type', 'invoice')
+                .eq('project_id', payment.project_id)
+                .not('sent_at', 'is', null)
+                .order('sent_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
 
-	let lines = receipt.financial_document_lines ?? [];
-	if (!lines.length) {
-		const snapshotLines = state.tasks.map((task: any, index: number) => ({ financial_document_id: receipt.id, project_billing_task_id: task.id, description: task.description, task_total: task.task_total, billed_amount: task.billed_amount, display_order: index }));
-		const { data, error } = await admin.from('financial_document_lines').insert(snapshotLines).select('*');
-		if (error) throw error;
-		lines = data ?? [];
-	}
+    const { data: invoice, error: invoiceError } = invoiceResult;
 
-	const recipientIds = Array.isArray(receipt.recipient_contact_ids) ? receipt.recipient_contact_ids : [];
-	if (!recipientIds.length) throw new Error('The related sent invoice has no approved receipt recipients.');
-	const [{ data: contacts, error: contactError }, { data: projectDetails, error: projectError }, { data: clientDetails, error: clientError }] = await Promise.all([
-		admin.from('client_contacts').select('id, name, email').eq('client_id', state.project.client_id).in('id', recipientIds),
-		admin.from('projects').select('name, description, address, city, state, zip').eq('id', payment.project_id).single(),
-		admin.from('clients').select('name, address, city, state, zip').eq('id', state.project.client_id).single()
-	]);
-	if (contactError) throw contactError;
-	if (projectError) throw projectError;
-	if (clientError) throw clientError;
-	const recipients = (contacts ?? []).map((contact) => String(contact.email ?? '').trim()).filter(Boolean);
-	if (recipients.length !== recipientIds.length) throw new Error('Every receipt recipient must be an approved project contact with an email address.');
-	const cityLine = (record: any) => [record?.city, record?.state, record?.zip].filter(Boolean).join(' ');
-	const renderProject = { ...state.project, ...projectDetails, bill_to_contact: contacts?.[0]?.name ?? '', client_name: clientDetails.name ?? '', client_address: clientDetails.address ?? '', client_city_line: cityLine(clientDetails), address_line: [projectDetails.address, cityLine(projectDetails)].filter(Boolean).join(', ') };
-	const bytes = await renderInvoicePdf({ project: renderProject, document: receipt, lines, documentKind: 'receipt', paymentReceived: paymentAmount });
-	const path = `financials/${payment.project_id}/receipts/${receipt.id}/receipt.pdf`;
-	const { error: uploadError } = await admin.storage.from('client-documents').upload(path, bytes, { contentType: 'application/pdf', upsert: true });
-	if (uploadError) throw uploadError;
-	const { error: pathError } = await admin.from('financial_documents').update({ pdf_storage_path: path }).eq('id', receipt.id);
-	if (pathError) throw pathError;
-	const attachmentBytes = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-	await sendZohoMail({ from: 'accounting@dogwoodlanddev.com', to: recipients.join(','), subject: `Payment Receipt - ${state.project.project_number ?? state.project.name}`, content: buildReceiptEmailContent(paymentAmount, receiptAmountDue), attachments: [new File([attachmentBytes], 'receipt.pdf', { type: 'application/pdf' })] });
-	const sentAt = new Date().toISOString();
-	const { data: sent, error: sentError } = await admin.from('financial_documents').update({ sent_at: sentAt }).eq('id', receipt.id).select('*').single();
-	if (sentError) throw new Error('Receipt email was sent, but its sent timestamp could not be recorded.');
-	return mapFinancialDocument({ ...sent, financial_document_lines: lines });
+    if (invoiceError) throw invoiceError;
+    if (!invoice) {
+        throw new Error(
+            sourceInvoiceId
+                ? 'The paid invoice could not be found for this receipt.'
+                : 'A sent invoice is required before a receipt can be generated for this payment.'
+        );
+    }
+
+    const state = await loadProjectFinancialState(admin, payment.project_id);
+    const paymentAmount = Number(payment.amount);
+    const receiptAmountDue = calculateReceiptAmountDue(
+        Number(invoice.amount_due),
+        paymentAmount
+    );
+
+    let receipt = existingReceipt;
+
+    if (!receipt) {
+        const { data, error } = await admin
+            .from('financial_documents')
+            .insert({
+                project_id: payment.project_id,
+                document_type: 'receipt',
+                source_payment_id: payment.id,
+                total_project_invoice: Number(invoice.total_project_invoice),
+                amount_paid_to_date: state.totals.amountPaidToDate,
+                amount_due: receiptAmountDue,
+                recipient_contact_ids: invoice.recipient_contact_ids ?? [],
+                created_by: userId || null
+            })
+            .select('*')
+            .single();
+
+        if (error?.code === '23505') {
+            const { data: racedReceipt, error: racedError } = await admin
+                .from('financial_documents')
+                .select('*, financial_document_lines(*)')
+                .eq('document_type', 'receipt')
+                .eq('source_payment_id', payment.id)
+                .single();
+
+            if (racedError) throw racedError;
+            if (racedReceipt.sent_at) return mapFinancialDocument(racedReceipt);
+
+            throw new Error('Receipt generation is already in progress; retry this webhook.');
+        } else if (error) {
+            throw error;
+        } else {
+            receipt = data;
+        }
+    }
+
+    let lines = receipt.financial_document_lines ?? [];
+
+    if (!lines.length) {
+        const invoiceLines = Array.isArray(invoice.financial_document_lines)
+            ? invoice.financial_document_lines
+            : [];
+
+        const snapshotLines =
+            sourceInvoiceId && invoiceLines.length
+                ? invoiceLines.map((line: any, index: number) => ({
+                        financial_document_id: receipt.id,
+                        project_billing_task_id: line.project_billing_task_id,
+                        description: line.description,
+                        task_total: line.task_total,
+                        billed_amount: line.billed_amount,
+                        display_order: line.display_order ?? index
+                    }))
+                : state.tasks.map((task: any, index: number) => ({
+                        financial_document_id: receipt.id,
+                        project_billing_task_id: task.id,
+                        description: task.description,
+                        task_total: task.task_total,
+                        billed_amount: task.billed_amount,
+                        display_order: index
+                    }));
+
+        const { data, error } = await admin
+            .from('financial_document_lines')
+            .insert(snapshotLines)
+            .select('*');
+
+        if (error) throw error;
+        lines = data ?? [];
+    }
+
+    const recipientIds = Array.isArray(receipt.recipient_contact_ids)
+        ? receipt.recipient_contact_ids
+        : [];
+
+    if (!recipientIds.length) {
+        throw new Error('The related sent invoice has no approved receipt recipients.');
+    }
+
+    const [
+        { data: contacts, error: contactError },
+        { data: projectDetails, error: projectError },
+        { data: clientDetails, error: clientError }
+    ] = await Promise.all([
+        admin
+            .from('client_contacts')
+            .select('id, name, email')
+            .eq('client_id', state.project.client_id)
+            .in('id', recipientIds),
+        admin
+            .from('projects')
+            .select('name, description, address, city, state, zip')
+            .eq('id', payment.project_id)
+            .single(),
+        admin
+            .from('clients')
+            .select('name, address, city, state, zip')
+            .eq('id', state.project.client_id)
+            .single()
+    ]);
+
+    if (contactError) throw contactError;
+    if (projectError) throw projectError;
+    if (clientError) throw clientError;
+
+    const recipients = (contacts ?? [])
+        .map((contact) => String(contact.email ?? '').trim())
+        .filter(Boolean);
+
+    if (recipients.length !== recipientIds.length) {
+        throw new Error(
+            'Every receipt recipient must be an approved project contact with an email address.'
+        );
+    }
+
+    const cityLine = (record: any) =>
+        [record?.city, record?.state, record?.zip].filter(Boolean).join(' ');
+
+    const renderProject = {
+        ...state.project,
+        ...projectDetails,
+        bill_to_contact: contacts?.[0]?.name ?? '',
+        client_name: clientDetails.name ?? '',
+        client_address: clientDetails.address ?? '',
+        client_city_line: cityLine(clientDetails),
+        address_line: [projectDetails.address, cityLine(projectDetails)]
+            .filter(Boolean)
+            .join(', ')
+    };
+
+    const bytes = await renderInvoicePdf({
+        project: renderProject,
+        document: receipt,
+        lines,
+        documentKind: 'receipt',
+        paymentReceived: paymentAmount
+    });
+
+    const path = `financials/${payment.project_id}/receipts/${receipt.id}/receipt.pdf`;
+
+    const { error: uploadError } = await admin.storage
+        .from('client-documents')
+        .upload(path, bytes, {
+            contentType: 'application/pdf',
+            upsert: true
+        });
+
+    if (uploadError) throw uploadError;
+
+    const { error: pathError } = await admin
+        .from('financial_documents')
+        .update({ pdf_storage_path: path })
+        .eq('id', receipt.id);
+
+    if (pathError) throw pathError;
+
+    const attachmentBytes = bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength
+    ) as ArrayBuffer;
+
+    await sendZohoMail({
+        from: 'accounting@dogwoodlanddev.com',
+        to: recipients.join(','),
+        subject: `Payment Receipt - ${state.project.project_number ?? state.project.name}`,
+        content: buildReceiptEmailContent(paymentAmount, receiptAmountDue),
+        attachments: [
+            new File([attachmentBytes], 'receipt.pdf', {
+                type: 'application/pdf'
+            })
+        ]
+    });
+
+    const sentAt = new Date().toISOString();
+
+    const { data: sent, error: sentError } = await admin
+        .from('financial_documents')
+        .update({ sent_at: sentAt })
+        .eq('id', receipt.id)
+        .select('*')
+        .single();
+
+    if (sentError) {
+        throw new Error(
+            'Receipt email was sent, but its sent timestamp could not be recorded.'
+        );
+    }
+
+    return mapFinancialDocument({
+        ...sent,
+        financial_document_lines: lines
+    });
 }
 
-export async function createAndSendInvoice(admin: SupabaseClient, userId: string, projectId: string, recipientEmails: string[] | string, message: string, manualRecipientEmails: string[] = [], saveToClientId = '') {
+export async function createAndSendInvoice(admin: SupabaseClient, userId: string, projectId: string, recipientContactIds: string[], message: string, manualRecipientEmails: string[] = [], saveToClientId = '', origin = '') {
 	const state = await loadProjectFinancialState(admin, projectId);
 	if (!state.tasks.length) throw new Error('Add at least one financial task before sending an invoice.');
-	const ids = [...new Set(Array.isArray(recipientEmails) ? recipientEmails : [])].filter(Boolean);
+	const requestedIds = [...new Set(recipientContactIds)].filter(Boolean);
 	const manualEmails = [...new Set(manualRecipientEmails.map((email) => email.trim().toLowerCase()).filter(Boolean))];
 	if (manualEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('Enter a valid invoice email address.');
-	if (!ids.length && !manualEmails.length) throw new Error('Choose an email or select Send to Client.');
-	const [{ data: contacts, error: contactError }, { data: projectDetails, error: projectError }, { data: clientDetails, error: clientError }] = await Promise.all([
-		admin.from('client_contacts').select('id, name, email').eq('client_id', state.project.client_id).in('id', ids),
+	if (!requestedIds.length && !manualEmails.length) throw new Error('Choose an email or select Send to Client.');
+	if (saveToClientId && saveToClientId !== state.project.client_id) throw new Error('Invoice recipients must belong to the project client.');
+	const [{ data: existingContacts, error: contactError }, { data: projectDetails, error: projectError }, { data: clientDetails, error: clientError }] = await Promise.all([
+		admin.from('client_contacts').select('id, name, email, phone, contact_type').eq('client_id', state.project.client_id),
 		admin.from('projects').select('name, description, address, city, state, zip').eq('id', projectId).single(),
 		admin.from('clients').select('name, address, city, state, zip').eq('id', state.project.client_id).single()
 	]);
 	if (contactError) throw contactError;
 	if (projectError) throw projectError;
 	if (clientError) throw clientError;
-	const contactRecipients = (contacts ?? []).map((contact) => String(contact.email ?? '').trim().toLowerCase()).filter(Boolean);
-	if (contactRecipients.length !== ids.length) throw new Error('Every selected recipient must be an approved project contact with an email address.');
+	const selectedContacts = (existingContacts ?? []).filter((contact) => requestedIds.includes(contact.id));
+	const contactRecipients = selectedContacts.map((contact) => String(contact.email ?? '').trim().toLowerCase()).filter(Boolean);
+	if (selectedContacts.length !== requestedIds.length || contactRecipients.length !== requestedIds.length) throw new Error('Every selected recipient must be an approved project contact with an email address.');
+
+	const contactsByEmail = new Map((existingContacts ?? []).map((contact) => [String(contact.email ?? '').trim().toLowerCase(), contact]));
+	const newEmails = manualEmails.filter((email) => !contactsByEmail.has(email));
+	let savedContacts: Array<{ id: string; name: string | null; email: string | null; phone: string | null; contact_type: string }> = [];
+	if (newEmails.length) {
+		const hasPrimary = (existingContacts ?? []).some((contact) => contact.contact_type === 'primary');
+		const { data: inserted, error: insertError } = await admin.from('client_contacts').insert(newEmails.map((email, index) => ({ client_id: state.project.client_id, contact_type: !hasPrimary && index === 0 ? 'primary' : 'secondary', name: 'Invoice recipient', email, phone: null }))).select('id, name, email, phone, contact_type');
+		if (insertError) throw new Error(`Invoice recipients could not be saved: ${insertError.message}`);
+		savedContacts = inserted ?? [];
+		for (const contact of savedContacts) contactsByEmail.set(String(contact.email ?? '').trim().toLowerCase(), contact);
+	}
+	const ids = [...new Set([...requestedIds, ...manualEmails.map((email) => contactsByEmail.get(email)?.id ?? '').filter(Boolean)])];
 	const recipients = [...new Set([...contactRecipients, ...manualEmails])];
 	const totals = calculateFinancialTotals(state.tasks, state.payments);
 	const { data: document, error: documentError } = await admin.from('financial_documents').insert({ project_id: projectId, document_type: 'invoice', total_project_invoice: totals.totalProjectInvoice, amount_paid_to_date: totals.amountPaidToDate, amount_due: totals.amountDue, recipient_contact_ids: ids, created_by: userId }).select('*').single();
@@ -187,7 +397,7 @@ export async function createAndSendInvoice(admin: SupabaseClient, userId: string
 	const { data: lines, error: linesError } = await admin.from('financial_document_lines').insert(snapshotLines).select('*');
 	if (linesError) throw linesError;
 	const cityLine = (record: any) => [record?.city, record?.state, record?.zip].filter(Boolean).join(' ');
-	const renderProject = { ...state.project, ...projectDetails, bill_to_contact: contacts?.[0]?.name ?? '', client_name: clientDetails.name ?? '', client_address: clientDetails.address ?? '', client_city_line: cityLine(clientDetails), address_line: [projectDetails.address, cityLine(projectDetails)].filter(Boolean).join(', ') };
+	const renderProject = { ...state.project, ...projectDetails, bill_to_contact: selectedContacts[0]?.name ?? contactsByEmail.get(manualEmails[0])?.name ?? '', client_name: clientDetails.name ?? '', client_address: clientDetails.address ?? '', client_city_line: cityLine(clientDetails), address_line: [projectDetails.address, cityLine(projectDetails)].filter(Boolean).join(', ') };
 	const bytes = await renderInvoicePdf({ project: renderProject, document, lines: lines ?? snapshotLines });
 	const path = `financials/${projectId}/invoices/${document.id}/invoice.pdf`;
 	const { error: uploadError } = await admin.storage.from('client-documents').upload(path, bytes, { contentType: 'application/pdf', upsert: false });
@@ -195,13 +405,13 @@ export async function createAndSendInvoice(admin: SupabaseClient, userId: string
 	const { data: stored, error: storedError } = await admin.from('financial_documents').update({ pdf_storage_path: path }).eq('id', document.id).select('*').single();
 	if (storedError) throw storedError;
 	const attachmentBytes = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-	await sendZohoMail({ from: 'accounting@dogwoodlanddev.com', to: recipients.join(','), subject: `Invoice - ${state.project.project_number ?? state.project.name}`, content: buildInvoiceEmailContent(document, message), attachments: [new File([attachmentBytes], 'invoice.pdf', { type: 'application/pdf' })] });
-	if (manualEmails.length && saveToClientId) {
-		const { error: saveError } = await admin.from('client_invoice_emails').upsert(manualEmails.map((email) => ({ client_id: saveToClientId, email })), { onConflict: 'client_id,email' });
-		if (saveError) console.error('Invoice recipient save failed:', saveError);
-	}
+  const paymentUrl =
+    origin && Number(document.amount_due) > 0
+      ? `${origin}/pay/${document.id}?token=${createPaymentLinkToken(document.id)}`
+      : '';
+    await sendZohoMail({ from: 'accounting@dogwoodlanddev.com', to: recipients.join(','), subject: `Invoice - ${state.project.project_number ?? state.project.name}`, content: buildInvoiceEmailContent(document, message, paymentUrl), attachments: [new File([attachmentBytes], 'invoice.pdf', { type: 'application/pdf' })] });
 	const sentAt = new Date().toISOString();
 	const { data: sent, error: sentError } = await admin.from('financial_documents').update({ sent_at: sentAt }).eq('id', document.id).select('*').single();
 	if (sentError) throw new Error('Email was sent, but the sent timestamp could not be saved.');
-	return mapFinancialDocument({ ...sent, financial_document_lines: lines });
+	return { document: mapFinancialDocument({ ...sent, financial_document_lines: lines }), savedContacts };
 }

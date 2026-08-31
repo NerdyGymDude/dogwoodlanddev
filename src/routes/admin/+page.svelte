@@ -21,6 +21,7 @@
 	import ReportsView from '$lib/admin/reports/ReportsView.svelte';
 	import SettingsView from '$lib/admin/settings/SettingsView.svelte';
 	import AdminLegacyModal from '$lib/admin/modals/AdminLegacyModal.svelte';
+	import DestructiveConfirmModal from '$lib/admin/modals/DestructiveConfirmModal.svelte';
 	import InvoiceDetailModal from '$lib/admin/accounting/InvoiceDetailModal.svelte';
 
 	import type {
@@ -56,6 +57,9 @@
 	let selectedClient = $state('');
 	let moreOpen = $state(false);
 	let modal = $state('');
+	let composeContactId = $state('');
+	let removeClientOpen = $state(false);
+	let removeProjectOpen = $state(false);
 	let selectedInvoice = $state<Invoice | null>(null);
 	let invoiceToEdit = $state<Invoice | null>(null);
 	let projectBillingTasks = $state<FinancialTask[]>([]);
@@ -131,6 +135,30 @@
 		go('client');
 	}
 
+	async function removeSelectedClient() {
+		if (!client) return;
+		const response = await fetch(`/admin/api/clients?id=${encodeURIComponent(client.id)}`, { method: 'DELETE' });
+		const result = await response.json().catch(() => ({}));
+		if (!response.ok) { store.notify(result.error || 'Unable to remove client'); return; }
+		const name = client.name;
+		store.removePersistedClient(client.id);
+		removeClientOpen = false;
+		store.notify(`${name} removed`);
+		go('clients');
+	}
+
+	async function removeSelectedProject() {
+		if (!project) return;
+		const response = await fetch(`/admin/api/projects?id=${encodeURIComponent(project.id)}`, { method: 'DELETE' });
+		const result = await response.json().catch(() => ({}));
+		if (!response.ok) { store.notify(result.error || 'Unable to remove project'); return; }
+		const name = project.name;
+		store.removePersistedProject(project.id);
+		removeProjectOpen = false;
+		store.notify(`${name} removed`);
+		go('projects');
+	}
+
 	function chooseComponentSearchResult(result: SearchRecord) {
 		if (result.type === 'Project') {
 			openProject(result.id);
@@ -180,46 +208,17 @@
 		tertiaryContactName: string;
 		tertiaryContactPhone: string;
 		tertiaryContactEmail: string;
+		contacts: Array<{ id: string; contact_type: 'primary' | 'secondary' | 'tertiary'; name: string | null; phone: string | null; email: string | null }>;
 	}): Client {
-		const contacts: Client['contacts'] = [];
-
-		if (record.primaryContactName || record.primaryContactPhone || record.primaryContactEmail) {
-			contacts.push({
-				id: record.primaryContactId,
-				name: record.primaryContactName,
-				role: 'Primary Contact',
-				email: record.primaryContactEmail,
-				phone: record.primaryContactPhone,
-				preferred: 'Email',
-				primary: true
-			});
-		}
-
-		if (
-			record.secondaryContactName ||
-			record.secondaryContactPhone ||
-			record.secondaryContactEmail
-		) {
-			contacts.push({
-				id: record.secondaryContactId,
-				name: record.secondaryContactName,
-				role: 'Secondary Contact',
-				email: record.secondaryContactEmail,
-				phone: record.secondaryContactPhone,
-				preferred: 'Email'
-			});
-		}
-
-		if (record.tertiaryContactName || record.tertiaryContactPhone || record.tertiaryContactEmail) {
-			contacts.push({
-				id: record.tertiaryContactId,
-				name: record.tertiaryContactName,
-				role: 'Tertiary Contact',
-				email: record.tertiaryContactEmail,
-				phone: record.tertiaryContactPhone,
-				preferred: 'Email'
-			});
-		}
+		const contacts: Client['contacts'] = record.contacts.map((contact) => ({
+			id: contact.id,
+			name: contact.name ?? '',
+			role: `${contact.contact_type[0].toUpperCase()}${contact.contact_type.slice(1)} Contact`,
+			email: contact.email ?? '',
+			phone: contact.phone ?? '',
+			preferred: 'Email',
+			primary: contact.contact_type === 'primary'
+		}));
 
 		return {
 			id: record.id,
@@ -267,9 +266,14 @@
 			name: record.name,
 			clientId: record.clientId || '',
 			address: [record.address, record.city, record.state, record.zip].filter(Boolean).join(', '),
+			streetAddress: record.address || '',
+			city: record.city || '',
+			state: record.state || '',
+			zip: record.zip || '',
 			phase: record.phase || 'New',
 			summary: record.description || record.notes || '',
 			description: record.description || '',
+			notes: record.notes || '',
 			projectType: record.projectType || '',
 			nextMilestone: record.targetCompletionDate
 				? `Target ${formatDateShort(record.targetCompletionDate)}`
@@ -358,6 +362,13 @@
 		else if (kind === 'payment') projectPayments = [value as ProjectPayment, ...projectPayments];
 		else if (kind === 'allocation') projectPaymentAllocations = [value as ProjectPaymentAllocation, ...projectPaymentAllocations];
 		else financialDocuments = [value as FinancialDocument, ...financialDocuments];
+	}
+
+	function syncProjectFinancialState(projectId: string, state: { tasks: FinancialTask[]; payments: ProjectPayment[]; allocations: ProjectPaymentAllocation[] }) {
+		const previousPaymentIds = new Set(projectPayments.filter((payment) => payment.projectId === projectId).map((payment) => payment.id));
+		projectBillingTasks = [...projectBillingTasks.filter((task) => task.projectId !== projectId), ...state.tasks].sort((a, b) => a.displayOrder - b.displayOrder);
+		projectPayments = [...projectPayments.filter((payment) => payment.projectId !== projectId), ...state.payments];
+		projectPaymentAllocations = [...projectPaymentAllocations.filter((allocation) => !previousPaymentIds.has(allocation.paymentId)), ...state.allocations];
 	}
 
 	async function saveQuickAdd(type: AdminRecordType, formData: unknown) {
@@ -537,24 +548,9 @@
 					{client}
 					ongoback={() => go('clients')}
 					onopenproject={openProject}
-					onemail={() => (modal = 'email')}
+					onemail={(contactId = '') => { composeContactId = contactId; modal = 'email'; }}
 					onedit={() => (modal = 'editclient')}
-					onremove={async () => {
-						if (!confirm(`Remove ${client.name}?`)) return;
-
-						const response = await fetch(`/admin/api/clients?id=${encodeURIComponent(client.id)}`, {
-							method: 'DELETE'
-						});
-
-						if (!response.ok) {
-							store.notify('Unable to remove client');
-							return;
-						}
-
-						store.removePersistedClient(client.id);
-						store.notify(`${client.name} removed`);
-						go('clients');
-					}}
+					onremove={() => (removeClientOpen = true)}
 					oncreateproject={() => openQuickAdd('project')}
 				/>
 			{:else if view === 'projects'}
@@ -574,24 +570,9 @@
 					allocations={projectPaymentAllocations.filter((allocation) => projectPayments.some((payment) => payment.projectId === project.id && payment.id === allocation.paymentId))}
 					financialDocuments={financialDocuments.filter((item) => item.projectId === project.id)}
 					onfinancialchange={updateFinancialRecord}
+					onfinancialsync={syncProjectFinancialState}
 					onedit={() => (modal = 'editproject')}
-					onremove={async () => {
-						if (!confirm(`Remove project "${project.name}"? This cannot be undone.`)) return;
-
-						const response = await fetch(`/admin/api/projects?id=${encodeURIComponent(project.id)}`, {
-							method: 'DELETE'
-						});
-						const result = await response.json().catch(() => ({}));
-
-						if (!response.ok) {
-							store.notify(result.error || 'Unable to remove project');
-							return;
-						}
-
-						store.removePersistedProject(project.id);
-						store.notify(`${project.name} removed`);
-						go('projects');
-					}}
+					onremove={() => (removeProjectOpen = true)}
 					{money}
 				/>
 			{:else if view === 'inbox'}
@@ -667,7 +648,10 @@
 	onsave={saveQuickAdd}
 />
 
-<AdminLegacyModal {modal} {project} {client} onclose={() => (modal = '')} onsaved={() => {}} />
+<AdminLegacyModal {modal} {project} {client} initialRecipientId={composeContactId} onclose={() => { modal = ''; composeContactId = ''; }} onsaved={(record) => { if (record) store.addPersistedProject(projectRecordFromApi(record)); }} />
+
+<DestructiveConfirmModal open={removeClientOpen && Boolean(client)} title="Remove Client" recordName={client?.name ?? ''} description="This will permanently remove this client. Related records may prevent removal." actionLabel="Remove client" onclose={() => (removeClientOpen = false)} onconfirm={removeSelectedClient} />
+<DestructiveConfirmModal open={removeProjectOpen && Boolean(project)} title="Delete Project" recordName={project?.name ?? ''} description="This will permanently remove this project. Related records may prevent removal." actionLabel="Delete project" onclose={() => (removeProjectOpen = false)} onconfirm={removeSelectedProject} />
 
 <InvoiceDetailModal invoice={selectedInvoice} onclose={closeInvoice} onedit={editInvoice} {money} />
 

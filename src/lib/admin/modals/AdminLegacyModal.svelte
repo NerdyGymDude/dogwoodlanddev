@@ -6,14 +6,16 @@
 		modal,
 		project,
 		client,
+		initialRecipientId = '',
 		onclose,
 		onsaved
 	}: {
 		modal: string;
 		project?: Project;
 		client?: Client;
+		initialRecipientId?: string;
 		onclose: () => void;
-		onsaved: () => void;
+		onsaved: (record?: unknown) => void;
 	} = $props();
 
 	let formTitle = $state('');
@@ -21,6 +23,20 @@
 	let formEmail = $state('');
 	let formPhone = $state('');
 	let formDescription = $state('');
+	let projectName = $state('');
+	let projectType = $state('');
+	let projectPhase = $state('');
+	let projectDescription = $state('');
+	let projectNotes = $state('');
+	let projectBudget = $state('');
+	let projectAddress = $state('');
+	let projectCity = $state('');
+	let projectState = $state('');
+	let projectZip = $state('');
+	let projectStartDate = $state('');
+	let projectEndDate = $state('');
+	let projectSaving = $state(false);
+	let projectError = $state('');
 	let formFromEmail = $state('branch@dogwoodlanddev.com');
 	let emailSending = $state(false);
 	let recipientIds = $state<string[]>([]);
@@ -32,8 +48,8 @@
 	$effect(() => {
 		if (modal === 'email' && client) {
 			const contactsWithEmail = client.contacts.filter((contact) => contact.email);
-
-			const primary = contactsWithEmail.find((contact) => contact.primary);
+			const requested = contactsWithEmail.find((contact) => contact.id === initialRecipientId);
+			const primary = requested ?? contactsWithEmail.find((contact) => contact.primary);
 
 			formEmail = primary?.email ?? contactsWithEmail[0]?.email ?? '';
 			recipientIds = primary ? [primary.id] : [];
@@ -49,6 +65,21 @@
 			formEmail = client.email;
 			formPhone = client.phone;
 			formDescription = client.notes;
+		}
+		if (modal === 'editproject' && project) {
+			projectName = project.name;
+			projectType = project.projectType;
+			projectPhase = project.phase;
+			projectDescription = project.description;
+			projectNotes = project.notes;
+			projectBudget = String(project.budget);
+			projectAddress = project.streetAddress;
+			projectCity = project.city;
+			projectState = project.state;
+			projectZip = project.zip;
+			projectStartDate = project.startDate;
+			projectEndDate = project.targetCompletionDate;
+			projectError = '';
 		}
 	});
 
@@ -158,8 +189,25 @@
 		}
 
 		if (modal === 'editproject' && project) {
-			onsaved();
-			onclose();
+			if (projectSaving) return;
+			projectSaving = true;
+			projectError = '';
+			try {
+				const response = await fetch(`/admin/api/projects?id=${encodeURIComponent(project.id)}`, {
+					method: 'PUT',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ name: projectName, projectType, phase: projectPhase, description: projectDescription, notes: projectNotes, budget: projectBudget, address: projectAddress, city: projectCity, state: projectState, zip: projectZip, startDate: projectStartDate, targetCompletionDate: projectEndDate })
+				});
+				const result = await response.json();
+				if (!response.ok) throw new Error(result.error || 'Unable to update project.');
+				onsaved(result.project);
+				store.notify('Project updated');
+				onclose();
+			} catch (error) {
+				projectError = error instanceof Error ? error.message : 'Unable to update project.';
+			} finally {
+				projectSaving = false;
+			}
 			return;
 		}
 
@@ -225,18 +273,54 @@
 
 			{#if modal === 'editproject' && project}
 				<label>
-					Phase
-					<select
-						value={project.phase}
-						onchange={(event) => store.updateProject(project.id, event.currentTarget.value)}
-					>
-						{#each ['Due Diligence', 'Entitlement', 'Engineering / Design', 'Permitting', 'Construction', 'Closeout'] as phase}
-							<option>{phase}</option>
-						{/each}
+					Project Number
+					<input value={project.projectNumber} readonly aria-readonly="true" />
+				</label>
+				<label>
+					Project Name
+					<input bind:value={projectName} required />
+				</label>
+				<label>
+					Project Type
+					<select bind:value={projectType}>
+						<option value="">Select project type</option>
+						{#each ['Residential Development', 'Commercial Development', 'Industrial Development', 'Site Planning', 'Stormwater', 'Onsite Wastewater', 'Mine / Borrow Pit', 'Permitting', 'Other'] as type}<option>{type}</option>{/each}
 					</select>
 				</label>
+				<label>
+					Project Description
+					<textarea bind:value={projectDescription} rows="4"></textarea>
+				</label>
+				<label>
+					Internal Notes
+					<textarea bind:value={projectNotes} rows="3"></textarea>
+				</label>
+				<label>
+					Estimate
+					<input type="number" min="0" step="0.01" bind:value={projectBudget} />
+				</label>
+				<label>
+					Street / Site Address
+					<input bind:value={projectAddress} />
+				</label>
+				<div class="project-location-grid">
+					<label>City<input bind:value={projectCity} /></label>
+					<label>State<input bind:value={projectState} /></label>
+					<label>ZIP<input bind:value={projectZip} /></label>
+				</div>
+				<label>
+					Phase
+					<select bind:value={projectPhase}>
+						{#each ['New', 'Due Diligence', 'Entitlement', 'Engineering / Design', 'Permitting', 'Construction', 'Closeout'] as phase}<option>{phase}</option>{/each}
+					</select>
+				</label>
+				<div class="project-date-grid">
+					<label>Project Start Date<input type="date" bind:value={projectStartDate} /></label>
+					<label>Expected End Date<input type="date" bind:value={projectEndDate} /></label>
+				</div>
+				{#if projectError}<p class="email-error">{projectError}</p>{/if}
 
-				<button class="primary" type="submit">Save project</button>
+				<button class="primary" type="submit" disabled={projectSaving}>{projectSaving ? 'Saving...' : 'Save project'}</button>
 			{:else}
 				<label>
 					{modal === 'client' || modal === 'editclient'
@@ -369,6 +453,10 @@
 {/if}
 
 <style>
+	.project-location-grid, .project-date-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 13px 0; }
+	.project-date-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.project-location-grid label, .project-date-grid label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 11px; font-weight: bold; }
+	.project-location-grid input, .project-date-grid input { width: 100%; }
 	.attachments {
 		display: grid;
 		gap: 6px;
@@ -409,4 +497,5 @@
 		color: #9b3028;
 		font-size: 12px;
 	}
+	@media (max-width: 520px) { .project-location-grid, .project-date-grid { grid-template-columns: 1fr; } }
 </style>

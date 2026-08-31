@@ -45,6 +45,25 @@ export async function loadProjectFinancialState(supabase: SupabaseClient, projec
 	return { project: project.data, tasks: tasks.data ?? [], payments: payments.data ?? [], totals: calculateFinancialTotals(tasks.data ?? [], payments.data ?? []) };
 }
 
+export async function getProjectFinancialData(supabase: SupabaseClient, projectId: string) {
+	const [tasks, payments] = await Promise.all([
+		supabase.from('project_billing_tasks').select('*').eq('project_id', projectId).order('display_order'),
+		supabase.from('project_payments').select('*').eq('project_id', projectId).order('payment_date', { ascending: false })
+	]);
+	if (tasks.error) throw tasks.error;
+	if (payments.error) throw payments.error;
+	const paymentIds = (payments.data ?? []).map((payment) => payment.id);
+	const allocations = paymentIds.length
+		? await supabase.from('project_payment_allocations').select('*').in('payment_id', paymentIds).order('created_at')
+		: { data: [], error: null };
+	if (allocations.error) throw allocations.error;
+	return {
+		tasks: (tasks.data ?? []).map(mapBillingTask),
+		payments: (payments.data ?? []).map(mapPayment),
+		allocations: (allocations.data ?? []).map(mapPaymentAllocation)
+	};
+}
+
 export function validateTaskInput(input: { description?: unknown; taskTotal?: unknown; billedAmount?: unknown }) {
 	const description = String(input.description ?? '').trim(); const taskTotal = cents(input.taskTotal); const billedAmount = cents(input.billedAmount);
 	if (!description) throw new Error('Description is required.');

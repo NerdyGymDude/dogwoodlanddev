@@ -28,9 +28,14 @@ export interface Project {
 	name: string;
 	clientId: string;
 	address: string;
+	streetAddress: string;
+	city: string;
+	state: string;
+	zip: string;
 	phase: string;
 	summary: string;
 	description: string;
+	notes: string;
 	projectType: string;
 	waitingOn?: string;
 	nextMilestone: string;

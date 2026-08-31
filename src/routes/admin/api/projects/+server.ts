@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { ProjectFormData } from '$lib/admin/forms/types';
-import { createProject } from '$lib/server/admin/core';
+import { createProject, updateProject } from '$lib/server/admin/core';
 import { requireActiveStaff } from '$lib/server/admin/authorization';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -20,6 +20,19 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			{ error: error instanceof Error ? error.message : 'Unable to create project.' },
 			{ status: 500 }
 		);
+	}
+};
+
+export const PUT: RequestHandler = async ({ locals, request, url }) => {
+	await requireActiveStaff(locals);
+	const projectId = String(url.searchParams.get('id') ?? '').trim();
+	if (!projectId) return json({ error: 'Project ID is required.' }, { status: 400 });
+	try {
+		const project = await updateProject(locals.supabase, projectId, await request.json());
+		return json({ project });
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Unable to update project.';
+		return json({ error: message }, { status: message === 'Project not found.' ? 404 : 400 });
 	}
 };
 

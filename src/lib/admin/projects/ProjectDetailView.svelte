@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { adminStore as store } from '$lib/admin/store.svelte';
+	import DestructiveConfirmModal from '$lib/admin/modals/DestructiveConfirmModal.svelte';
 	import type { FinancialDocument, FinancialTask, Project, ProjectPayment, ProjectPaymentAllocation } from '$lib/admin/types';
 
 	let {
@@ -12,6 +13,7 @@
 		allocations,
 		financialDocuments,
 		onfinancialchange,
+		onfinancialsync,
 		onedit,
 		onremove,
 		money
@@ -25,6 +27,7 @@
 		allocations: ProjectPaymentAllocation[];
 		financialDocuments: FinancialDocument[];
 		onfinancialchange: (kind: 'task' | 'payment' | 'allocation' | 'document', value: FinancialTask | ProjectPayment | ProjectPaymentAllocation | FinancialDocument) => void;
+		onfinancialsync: (projectId: string, state: { tasks: FinancialTask[]; payments: ProjectPayment[]; allocations: ProjectPaymentAllocation[] }) => void;
 		onedit: () => void;
 		onremove: () => void;
 		money: (value: number) => string;
@@ -55,13 +58,15 @@
 		return totals;
 	});
 	let taskOpen = $state(false); let editingTask = $state<FinancialTask | null>(null); let taskDescription = $state(''); let taskTotal = $state(''); let billedAmount = $state(''); let financialError = $state(''); let financialSaving = $state(false);
+	let removingTask = $state<FinancialTask | null>(null);
+	let removingPayment = $state<ProjectPayment | null>(null);
 	const editingTaskAmountPaid = $derived(editingTask ? (paidByTask.get(editingTask.id) ?? 0) : 0);
 	const editingTaskRemainingDue = $derived(Math.max((Number(taskTotal) || 0) - editingTaskAmountPaid, 0));
 	type CheckAllocationRow = { key: number; taskId: string; amount: string };
 	let checkAllocationKey = 1;
 	let checkOpen = $state(false); let checkAmount = $state(''); let checkAllocationMode = $state<'invoice' | 'tasks'>('invoice'); let checkAllocations = $state<CheckAllocationRow[]>([]); let checkNumber = $state(''); let checkDate = $state(new Date().toISOString().slice(0, 10)); let checkMemo = $state(''); let checkFile = $state<File | null>(null);
-	let sendOpen = $state(false); let invoiceRecipients = $state<string[]>([]); let invoiceMessage = $state('Please find the attached invoice.'); let invoiceEmails = $state<string[]>(['']); let savedInvoiceEmails = $state<Array<{ client_id: string; email: string }>>([]);
-	const invoiceEmailOptions = $derived([...new Set([...emailContacts.map((contact) => contact.email), ...savedInvoiceEmails.filter((item) => item.client_id === project.clientId).map((item) => item.email)])]);
+	let sendOpen = $state(false); let invoiceRecipients = $state<string[]>([]); let invoiceMessage = $state('Please find the attached invoice.'); let invoiceEmails = $state<string[]>(['']);
+	const invoiceEmailOptions = $derived([...new Set(emailContacts.map((contact) => contact.email))]);
 
 	function parseMoneyInput(value: string) { const trimmed = value.trim(); if (!trimmed) return 0; if (!/^\$?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d{1,2})?$/.test(trimmed)) return Number.NaN; return Number(trimmed.replace(/[$,]/g, '')); }
 	function openTask(task: FinancialTask | null = null) { editingTask = task; taskDescription = task?.description ?? ''; taskTotal = task ? String(task.taskTotal) : ''; billedAmount = ''; financialError = ''; taskOpen = true; }
@@ -99,13 +104,29 @@
 			const form = new FormData();
 			form.set('projectId', project.id); form.set('allocationMode', checkAllocationMode); form.set('allocations', JSON.stringify(requestedAllocations)); form.set('amount', String(amountCents / 100)); form.set('checkNumber', checkNumber); form.set('paymentDate', checkDate); form.set('memo', checkMemo); if (checkFile) form.set('file', checkFile);
 			const response = await fetch('/admin/api/financials/payments', { method: 'POST', body: form }); const result = await response.json(); if (!response.ok) throw new Error(result.error);
-			onfinancialchange('payment', result.payment); for (const allocation of result.allocations ?? []) onfinancialchange('allocation', allocation); for (const task of result.tasks ?? []) onfinancialchange('task', task); checkOpen = false;
+			onfinancialsync(project.id, result.financialState); checkOpen = false; store.notify(result.warning || 'Paper check recorded');
 		} catch (error) { financialError = error instanceof Error ? error.message : 'Unable to record check.'; } finally { financialSaving = false; }
 	}
-	async function openInvoiceSend() { financialError = ''; invoiceRecipients = []; invoiceEmails = ['']; try { const response = await fetch('/admin/api/client-invoice-emails'); const result = response.ok ? await response.json() : { emails: [] }; savedInvoiceEmails = result.emails ?? []; } catch { savedInvoiceEmails = []; } sendOpen = true; }
+	async function removeBillingTask() {
+		if (!removingTask) return;
+		try {
+			const response = await fetch(`/admin/api/financials/tasks?projectId=${encodeURIComponent(project.id)}&id=${encodeURIComponent(removingTask.id)}`, { method: 'DELETE' });
+			const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Unable to remove billing task.');
+			onfinancialsync(project.id, result.financialState); removingTask = null; store.notify('Billing task removed');
+		} catch (error) { store.notify(error instanceof Error ? error.message : 'Unable to remove billing task.'); }
+	}
+	async function removePaperCheck() {
+		if (!removingPayment) return;
+		try {
+			const response = await fetch(`/admin/api/financials/payments?projectId=${encodeURIComponent(project.id)}&id=${encodeURIComponent(removingPayment.id)}`, { method: 'DELETE' });
+			const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Unable to remove paper check.');
+			onfinancialsync(project.id, result.financialState); removingPayment = null; store.notify(result.warning || 'Paper check removed');
+		} catch (error) { store.notify(error instanceof Error ? error.message : 'Unable to remove paper check.'); }
+	}
+	function openInvoiceSend() { financialError = ''; invoiceRecipients = []; invoiceEmails = ['']; sendOpen = true; }
 	function updateInvoiceEmail(index: number, value: string) { invoiceEmails[index] = value; invoiceEmails = [...invoiceEmails]; }
 	function toggleInvoiceClient(checked: boolean) { if (!primaryInvoiceContact) return; invoiceRecipients = checked ? [primaryInvoiceContact.id] : []; if (checked) { if (!invoiceEmails[0]) updateInvoiceEmail(0, primaryInvoiceContact.email); } else if (invoiceEmails[0].trim().toLowerCase() === primaryInvoiceContact.email.trim().toLowerCase()) { updateInvoiceEmail(0, ''); } }
-	async function sendInvoice() { financialSaving = true; financialError = ''; try { const recipientEmails = invoiceEmails.map((email) => email.trim()).filter(Boolean); const response = await fetch(`/admin/api/financials/${project.id}/send`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ recipientContactIds: invoiceRecipients, recipientEmails, saveToClientId: project.clientId, message: invoiceMessage }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); onfinancialchange('document', result.document); sendOpen = false; store.notify('Invoice sent'); } catch (error) { financialError = error instanceof Error ? error.message : 'Unable to send invoice.'; } finally { financialSaving = false; } }
+	async function sendInvoice() { financialSaving = true; financialError = ''; try { const recipientEmails = invoiceEmails.map((email) => email.trim()).filter(Boolean); const response = await fetch(`/admin/api/financials/${project.id}/send`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ recipientContactIds: invoiceRecipients, recipientEmails, saveToClientId: project.clientId, message: invoiceMessage }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); onfinancialchange('document', result.document); if (client && Array.isArray(result.savedContacts)) { for (const contact of result.savedContacts) { if (!client.contacts.some((item) => item.id === contact.id)) client.contacts = [...client.contacts, { id: contact.id, name: contact.name ?? 'Invoice recipient', email: contact.email ?? '', phone: contact.phone ?? '', role: `${contact.contact_type[0].toUpperCase()}${contact.contact_type.slice(1)} Contact`, preferred: 'Email', primary: contact.contact_type === 'primary' }]; } } sendOpen = false; store.notify('Invoice sent'); } catch (error) { financialError = error instanceof Error ? error.message : 'Unable to send invoice.'; } finally { financialSaving = false; } }
 
 	function readableDate(value: string) {
 		if (!value) return 'TBD';
@@ -284,13 +305,13 @@
 				{#each financialTasks as task (task.id)}
 					{@const taskAmountPaid = paidByTask.get(task.id) ?? 0}
 					<div class="invoice-row">
-						<strong>{task.description}</strong><span>{money(task.taskTotal)}</span><strong>{money(task.billedAmount)}</strong><span>{money(taskAmountPaid)}</span><strong>{money(Math.max(task.taskTotal - taskAmountPaid, 0))}</strong><button onclick={() => openTask(task)}>Edit</button>
+						<strong>{task.description}</strong><span>{money(task.taskTotal)}</span><strong>{money(task.billedAmount)}</strong><span>{money(taskAmountPaid)}</span><strong>{money(Math.max(task.taskTotal - taskAmountPaid, 0))}</strong><span class="task-actions"><button onclick={() => openTask(task)}>Edit</button><button class="danger" onclick={() => (removingTask = task)}>Remove</button></span>
 					</div>
 				{/each}
 				{#if !financialTasks.length}<p class="empty-state">No financial tasks configured.</p>{/if}
 			</div>
 		<h3 class="history-title">Payment History</h3>
-		{#if payments.length}<div class="payment-history">{#each payments as payment (payment.id)}{@const paymentAllocations = allocations.filter((allocation) => allocation.paymentId === payment.id)}<div><strong>{money(payment.amount)}</strong><span class="payment-detail"><span>{payment.paymentMethod === 'paper_check' ? `Check ${payment.checkNumber}` : 'Electronic payment'} · {readableDate(payment.paymentDate)}</span>{#if paymentAllocations.length}<b>Applied to:</b>{#each paymentAllocations as allocation (allocation.id)}{@const allocatedTask = financialTasks.find((task) => task.id === allocation.projectBillingTaskId)}<span>{allocatedTask?.description ?? 'Task'} — {money(allocation.amount)}</span>{/each}{/if}{#if payment.memo}<span>Memo: {payment.memo}</span>{/if}</span>{#if payment.checkFilePath}<a href={`/admin/api/financials/payments/${payment.id}/file`} target="_blank">View file</a>{/if}</div>{/each}</div>{:else}<p class="empty-state">No payments recorded.</p>{/if}
+		{#if payments.length}<div class="payment-history">{#each payments as payment (payment.id)}{@const paymentAllocations = allocations.filter((allocation) => allocation.paymentId === payment.id)}<div><strong>{money(payment.amount)}</strong><span class="payment-detail"><span>{payment.paymentMethod === 'paper_check' ? `Check ${payment.checkNumber}` : 'Electronic payment'} · {readableDate(payment.paymentDate)}</span>{#if paymentAllocations.length}<b>Applied to:</b>{#each paymentAllocations as allocation (allocation.id)}{@const allocatedTask = financialTasks.find((task) => task.id === allocation.projectBillingTaskId)}<span>{allocatedTask?.description ?? 'Task'} — {money(allocation.amount)}</span>{/each}{/if}{#if payment.memo}<span>Memo: {payment.memo}</span>{/if}</span>{#if payment.checkFilePath}<a href={`/admin/api/financials/payments/${payment.id}/file`} target="_blank">View file</a>{/if}{#if payment.paymentMethod === 'paper_check'}<button class="payment-remove danger" onclick={() => (removingPayment = payment)}>Remove</button>{/if}</div>{/each}</div>{:else}<p class="empty-state">No payments recorded.</p>{/if}
 		{#if financialDocuments.length}<h3 class="history-title">Invoice History</h3><div class="payment-history">{#each financialDocuments as document (document.id)}<div><strong>{money(document.amountDue)}</strong><span>{document.sentAt ? `Sent ${new Date(document.sentAt).toLocaleDateString()}` : `Created ${new Date(document.createdAt).toLocaleDateString()}`}</span>{#if document.pdfStoragePath}<a href={`/admin/api/financials/documents/${document.id}/file`} target="_blank">View PDF</a>{/if}</div>{/each}</div>{/if}
 	</section>
 </div>
@@ -298,6 +319,9 @@
 {#if taskOpen}<div class="finance-backdrop"><form class="finance-modal" onsubmit={(event) => { event.preventDefault(); saveFinancialTask(); }}><h2>{editingTask ? 'Edit Task' : 'Add Task'}</h2><label>Description<input bind:value={taskDescription} required /></label><label>Amount<input type="number" min="0" step="0.01" bind:value={taskTotal} required /></label>{#if editingTask}<div class="readonly-field">Amount Paid<span class="read-only-financial">{money(editingTaskAmountPaid)}</span></div><div class="readonly-field">Remaining Due<span class="read-only-financial">{money(editingTaskRemainingDue)}</span></div>{/if}<label>Billed Amount<input type="text" inputmode="decimal" placeholder="Enter amount" bind:value={billedAmount} /></label>{#if financialError}<p class="email-error">{financialError}</p>{/if}<footer><button type="button" onclick={() => (taskOpen = false)}>Cancel</button><button class="primary" disabled={financialSaving}>Save Task</button></footer></form></div>{/if}
 {#if checkOpen}<div class="finance-backdrop"><form class="finance-modal" onsubmit={(event) => { event.preventDefault(); savePaperCheck(); }}><h2>Add Paper Check</h2><label>Check Amount<input type="text" inputmode="decimal" placeholder="Enter amount" bind:value={checkAmount} required /></label><label>Apply Payment<select bind:value={checkAllocationMode} onchange={() => { if (checkAllocationMode === 'tasks' && !checkAllocations.length) addCheckAllocation(); }}><option value="invoice">Entire current invoice</option><option value="tasks">Allocate to tasks</option></select></label>{#if checkAllocationMode === 'tasks'}<div class="check-allocation-list"><span>Task allocations</span>{#each checkAllocations as allocation (allocation.key)}<div class="check-allocation-row"><select aria-label="Task" bind:value={allocation.taskId}><option value="">Select task</option>{#each financialTasks as task (task.id)}<option value={task.id}>{task.description} ({money(task.billedAmount)} billed)</option>{/each}</select><input aria-label="Allocation amount" type="text" inputmode="decimal" placeholder="Amount" bind:value={allocation.amount} /><button type="button" onclick={() => removeCheckAllocation(allocation.key)}>Remove</button></div>{/each}<button type="button" onclick={addCheckAllocation}>+ Add task</button><small>Allocations must equal the Check Amount exactly. Each amount must be positive and cannot exceed that task's Billed Amount.</small></div>{/if}<label>Check Number<input bind:value={checkNumber} required /></label><label>Date Received<input type="date" bind:value={checkDate} required /></label><label>Memo<textarea rows="3" bind:value={checkMemo}></textarea></label><label>Check Image / File<input type="file" onchange={(event) => (checkFile = event.currentTarget.files?.[0] ?? null)} /></label>{#if financialError}<p class="email-error">{financialError}</p>{/if}<footer><button type="button" onclick={() => (checkOpen = false)}>Cancel</button><button class="primary" disabled={financialSaving}>Record Check</button></footer></form></div>{/if}
 {#if sendOpen}<div class="finance-backdrop"><form class="finance-modal" onsubmit={(event) => { event.preventDefault(); sendInvoice(); }}><h2>Send Invoice</h2><div class="invoice-recipient-line"><div class="invoice-email-list">{#each invoiceEmails as email, index}<label>Email {index + 1}<div class="invoice-email-input"><input type="email" list="invoice-email-options" placeholder="billing@example.com" value={email} oninput={(event) => updateInvoiceEmail(index, event.currentTarget.value)} />{#if invoiceEmails.length > 1}<button type="button" aria-label={`Remove email ${index + 1}`} onclick={() => (invoiceEmails = invoiceEmails.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>{/if}</div></label>{/each}<datalist id="invoice-email-options">{#each invoiceEmailOptions as email}<option value={email}></option>{/each}</datalist><button class="add-email" type="button" onclick={() => (invoiceEmails = [...invoiceEmails, ''])}>+ Add another email</button><small>New addresses are saved to this client after sending.</small></div><label class="recipient send-to-client"><input type="checkbox" checked={primaryInvoiceContact ? invoiceRecipients.includes(primaryInvoiceContact.id) : false} disabled={!primaryInvoiceContact} onchange={(event) => toggleInvoiceClient(event.currentTarget.checked)} /><span>Send to Client{#if primaryInvoiceContact}<small>{primaryInvoiceContact.email}</small>{:else}<small>No primary email</small>{/if}</span></label></div><label>Message<textarea rows="5" bind:value={invoiceMessage}></textarea></label>{#if financialError}<p class="email-error">{financialError}</p>{/if}<footer><button type="button" onclick={() => (sendOpen = false)}>Cancel</button><button class="primary" disabled={financialSaving}>Send Invoice</button></footer></form></div>{/if}
+
+<DestructiveConfirmModal open={Boolean(removingTask)} title="Remove Billing Task" recordName={removingTask?.description ?? ''} description="This will permanently remove this billing task." actionLabel="Remove task" onclose={() => (removingTask = null)} onconfirm={removeBillingTask} />
+<DestructiveConfirmModal open={Boolean(removingPayment)} title="Remove Paper Check" recordName={removingPayment ? `Check ${removingPayment.checkNumber} — ${money(removingPayment.amount)} · ${readableDate(removingPayment.paymentDate)}` : ''} description="This will permanently remove this paper-check payment and its generated receipt." actionLabel="Remove paper check" onclose={() => (removingPayment = null)} onconfirm={removePaperCheck} />
 
 {#if composeOpen}
 	<div
@@ -478,20 +502,10 @@
 		gap: 8px;
 		margin-top: 14px;
 	}
-	.invoice-summary {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		border-bottom: 1px solid #e1e6e1;
-		padding: 0 0 12px;
-		color: #68747c;
-		font-size: 12px;
-	}
 	.invoice-list-head,
 	.invoice-row {
 		display: grid;
-		grid-template-columns: minmax(180px, 1fr) repeat(4, 120px) 72px;
+		grid-template-columns: minmax(180px, 1fr) repeat(4, 120px) 118px;
 		align-items: center;
 		gap: 12px;
 	}
@@ -546,6 +560,8 @@
 		font-weight: 700;
 		cursor: pointer;
 	}
+	.task-actions { display: flex; gap: 5px; }
+	.task-actions .danger, .payment-remove.danger { color: #9b3028; }
 	.financial-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 	.history-title { margin: 22px 0 10px; color: #26384d; font-size: 15px; }
 	.payment-history { display: grid; gap: 8px; }
@@ -554,6 +570,7 @@
 	.payment-history .payment-detail { display: grid; gap: 3px; }
 	.payment-history .payment-detail b { color: #26384d; }
 	.payment-history a { color: #203552; font-size: 12px; font-weight: 700; }
+	.payment-history .payment-remove { flex: 0 0 auto; border: 1px solid #d8b9b5; border-radius: 6px; background: #fff; padding: 6px 9px; font-size: 10px; font-weight: 800; cursor: pointer; }
 	.finance-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 18px; background: rgba(20, 31, 23, 0.52); }
 	.finance-modal { box-sizing: border-box; display: grid; gap: 14px; width: min(500px, 100%); max-height: 90vh; overflow: auto; border-radius: 14px; background: white; padding: 22px; }
 	.finance-modal h2 { margin: 0; color: #26384d; }
@@ -561,7 +578,6 @@
 	.finance-modal .readonly-field { display: grid; gap: 6px; color: #46564c; font-size: 12px; font-weight: 700; }
 	.finance-modal input, .finance-modal select, .finance-modal textarea { box-sizing: border-box; width: 100%; border: 1px solid #d4dbd4; border-radius: 7px; padding: 10px; font: inherit; }
 	.read-only-financial { border: 1px solid #e0e5e0; border-radius: 7px; background: #f5f7f4; padding: 10px; color: #26384d; font-size: 14px; }
-	.finance-modal fieldset { display: grid; gap: 8px; margin: 0; border: 1px solid #d4dbd4; border-radius: 7px; padding: 10px; }
 	.finance-modal .recipient { display: flex; align-items: center; }
 	.finance-modal .recipient input { width: auto; }
 	.invoice-recipient-line { display: grid; grid-template-columns: minmax(0, 1fr) 180px; align-items: center; gap: 12px; }
@@ -757,8 +773,9 @@
 			display: none;
 		}
 		.invoice-row button {
-			grid-column: 1 / -1;
 			justify-self: start;
 		}
+		.task-actions { grid-column: 1 / -1; }
+		.payment-history > div { align-items: flex-start; flex-wrap: wrap; }
 	}
 </style>

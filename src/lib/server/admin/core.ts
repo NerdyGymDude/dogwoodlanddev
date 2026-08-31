@@ -235,6 +235,47 @@ export async function createProject(
 	throw new Error('Unable to reserve a unique Project ID. Please try again.');
 }
 
+export async function updateProject(
+	supabase: SupabaseClient,
+	projectId: string,
+	form: {
+		name?: unknown; projectType?: unknown; phase?: unknown; description?: unknown; notes?: unknown; budget?: unknown;
+		address?: unknown; city?: unknown; state?: unknown; zip?: unknown;
+		startDate?: unknown; targetCompletionDate?: unknown;
+	}
+) {
+	const name = String(form.name ?? '').trim();
+	if (!name) throw new Error('Project name is required.');
+	const startDate = String(form.startDate ?? '');
+	const targetCompletionDate = String(form.targetCompletionDate ?? '');
+	const budget = Number(String(form.budget ?? '0').replace(/[$,]/g, ''));
+	if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error('Enter a valid Start Date.');
+	if (targetCompletionDate && !/^\d{4}-\d{2}-\d{2}$/.test(targetCompletionDate)) throw new Error('Enter a valid Expected End Date.');
+	if (!Number.isFinite(budget) || budget < 0) throw new Error('Enter a valid Estimate.');
+	const { data, error } = await supabase
+		.from('projects')
+		.update({
+			name,
+			project_type: String(form.projectType ?? '').trim() || null,
+			phase: String(form.phase ?? '').trim() || 'New',
+			description: String(form.description ?? '').trim() || null,
+			notes: String(form.notes ?? '').trim() || null,
+			budget,
+			address: String(form.address ?? '').trim() || null,
+			city: String(form.city ?? '').trim() || null,
+			state: String(form.state ?? '').trim() || null,
+			zip: String(form.zip ?? '').trim() || null,
+			start_date: startDate || null,
+			target_completion_date: targetCompletionDate || null
+		})
+		.eq('id', projectId)
+		.select('*')
+		.maybeSingle();
+	if (error) throw error;
+	if (!data) throw new Error('Project not found.');
+	return mapProject(data);
+}
+
 export async function createTask(
 	supabase: SupabaseClient,
 	userId: string,

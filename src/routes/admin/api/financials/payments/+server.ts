@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireActiveStaff } from '$lib/server/admin/authorization';
 import { createSupabaseAdminClient } from '$lib/server/integrations/supabase-admin';
-import { mapBillingTask, mapPayment, mapPaymentAllocation } from '$lib/server/admin/accounting';
+import { getProjectFinancialData, mapBillingTask, mapPayment, mapPaymentAllocation } from '$lib/server/admin/accounting';
 import { createAndSendReceipt } from '$lib/server/admin/invoice-documents';
 import { buildPaymentAllocationPlan, moneyCents, type RequestedAllocation } from '$lib/server/admin/payment-allocations';
 
@@ -67,9 +67,85 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			updatedTasks.push(data);
 		}
 
-		const receipt = await createAndSendReceipt(admin, user.id, { id: savedPayment.id, project_id: savedPayment.project_id, amount: savedPayment.amount });
-		return json({ payment: mapPayment(savedPayment), allocations: (allocations ?? []).map(mapPaymentAllocation), tasks: updatedTasks.map(mapBillingTask), receipt }, { status: 201 });
+		let receipt = null;
+		let warning = '';
+		try {
+			receipt = await createAndSendReceipt(admin, user.id, { id: savedPayment.id, project_id: savedPayment.project_id, amount: savedPayment.amount });
+		} catch (error) {
+			console.error(`Paper check ${savedPayment.id} was recorded, but its receipt could not be completed:`, error);
+			warning = 'Payment recorded, but the receipt could not be generated or sent.';
+		}
+		const financialState = await getProjectFinancialData(admin, projectId);
+		return json({ payment: mapPayment(savedPayment), allocations: (allocations ?? []).map(mapPaymentAllocation), tasks: updatedTasks.map(mapBillingTask), receipt, warning, financialState }, { status: 201 });
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : 'Unable to record paper check.' }, { status: 400 });
+	}
+};
+
+export const DELETE: RequestHandler = async ({ locals, url }) => {
+	await requireActiveStaff(locals);
+	const projectId = String(url.searchParams.get('projectId') ?? '').trim();
+	const paymentId = String(url.searchParams.get('id') ?? '').trim();
+	if (!projectId || !paymentId) return json({ error: 'Project and payment IDs are required.' }, { status: 400 });
+	const admin = createSupabaseAdminClient();
+	try {
+		const { data: payment, error: paymentError } = await admin.from('project_payments').select('id, payment_method, check_file_path').eq('id', paymentId).eq('project_id', projectId).maybeSingle();
+		if (paymentError) throw paymentError;
+		if (!payment) return json({ error: 'Payment not found.' }, { status: 404 });
+		if (payment.payment_method !== 'paper_check') return json({ error: 'Stripe payments cannot be removed.' }, { status: 409 });
+		const { data: allocations, error: allocationError } = await admin.from('project_payment_allocations').select('project_billing_task_id, amount').eq('payment_id', paymentId);
+		if (allocationError) throw allocationError;
+		const taskIds = (allocations ?? []).map((allocation) => allocation.project_billing_task_id);
+		const { data: tasks, error: taskError } = taskIds.length
+			? await admin.from('project_billing_tasks').select('id, billed_amount, task_total').eq('project_id', projectId).in('id', taskIds)
+			: { data: [], error: null };
+		if (taskError) throw taskError;
+		if ((tasks ?? []).length !== taskIds.length) throw new Error('One or more allocated billing tasks could not be restored.');
+		const taskById = new Map((tasks ?? []).map((task) => [task.id, task]));
+		const restorations = (allocations ?? []).map((allocation) => {
+			const task = taskById.get(allocation.project_billing_task_id)!;
+			const restored = Math.round((Number(task.billed_amount) + Number(allocation.amount)) * 100) / 100;
+			if (restored > Number(task.task_total)) throw new Error('This check cannot be removed because a related task Amount was reduced after payment.');
+			return { id: task.id, original: Number(task.billed_amount), restored };
+		});
+
+		const { data: receipts, error: receiptLoadError } = await admin.from('financial_documents').select('id, pdf_storage_path').eq('source_payment_id', paymentId).eq('document_type', 'receipt');
+		if (receiptLoadError) throw receiptLoadError;
+		const restoredTaskIds: string[] = [];
+		try {
+			for (const restoration of restorations) {
+				const { data: restoredTask, error: restoreError } = await admin.from('project_billing_tasks').update({ billed_amount: restoration.restored }).eq('id', restoration.id).eq('project_id', projectId).eq('billed_amount', restoration.original).select('id').maybeSingle();
+				if (restoreError) throw restoreError;
+				if (!restoredTask) throw new Error('A billing task changed while the check was being removed. Please retry.');
+				restoredTaskIds.push(restoration.id);
+			}
+			if (receipts?.length) {
+			const { error: receiptDeleteError } = await admin.from('financial_documents').delete().eq('source_payment_id', paymentId).eq('document_type', 'receipt');
+			if (receiptDeleteError) throw new Error(`The generated receipt could not be removed: ${receiptDeleteError.message}`);
+			}
+
+			const { data: deleted, error: deleteError } = await admin.from('project_payments').delete().eq('id', paymentId).eq('project_id', projectId).eq('payment_method', 'paper_check').select('id').maybeSingle();
+			if (deleteError) throw deleteError;
+			if (!deleted) throw new Error('Paper-check payment was not found during removal.');
+		} catch (deleteError) {
+			for (const taskId of restoredTaskIds.reverse()) {
+				const restoration = restorations.find((item) => item.id === taskId)!;
+				await admin.from('project_billing_tasks').update({ billed_amount: restoration.original }).eq('id', taskId).eq('project_id', projectId).eq('billed_amount', restoration.restored);
+			}
+			throw deleteError;
+		}
+
+		const cleanupPaths = [payment.check_file_path, ...(receipts ?? []).map((receipt) => receipt.pdf_storage_path)].filter((path): path is string => Boolean(path));
+		let warning = '';
+		if (cleanupPaths.length) {
+			const { error: cleanupError } = await admin.storage.from('client-documents').remove(cleanupPaths);
+			if (cleanupError) {
+				console.error(`Payment ${paymentId} was removed, but storage cleanup failed:`, cleanupError);
+				warning = 'Payment removed, but one or more associated files could not be cleaned up.';
+			}
+		}
+		return json({ financialState: await getProjectFinancialData(admin, projectId), warning });
+	} catch (error) {
+		return json({ error: error instanceof Error ? error.message : 'Unable to remove paper-check payment.' }, { status: 500 });
 	}
 };
