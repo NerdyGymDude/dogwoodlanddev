@@ -2,12 +2,9 @@
 import type { Actions, PageServerLoad } from './$types';
 import { getClients } from '$lib/server/admin/clients';
 import { getEvents, getProjects, getTasks } from '$lib/server/admin/core';
-import { getInvoices } from '$lib/server/admin/accounting';
+import { getFinancialData } from '$lib/server/admin/accounting';
 import { requireActiveStaff } from '$lib/server/admin/authorization';
-import {
-	getZohoInboxMessages,
-	sendZohoMail
-} from '$lib/server/integrations/zoho-mail';
+import { getZohoInboxMessages, sendZohoMail } from '$lib/server/integrations/zoho-mail';
 
 const allowedMailboxes = new Set([
 	'branch@dogwoodlanddev.com',
@@ -19,12 +16,12 @@ const allowedMailboxes = new Set([
 export const load: PageServerLoad = async ({ locals }) => {
 	await requireActiveStaff(locals);
 
-	const [clients, projects, tasks, events, invoices] = await Promise.all([
+	const [clients, projects, tasks, events, financials] = await Promise.all([
 		getClients(locals.supabase),
 		getProjects(locals.supabase),
 		getTasks(locals.supabase),
 		getEvents(locals.supabase),
-		getInvoices(locals.supabase)
+		getFinancialData(locals.supabase)
 	]);
 
 	const mailboxAddresses = [
@@ -64,7 +61,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		projects,
 		tasks,
 		events,
-		invoices,
+		...financials,
 		zohoInboxes
 	};
 };
@@ -138,4 +135,3 @@ export const actions: Actions = {
 		}
 	}
 };
-

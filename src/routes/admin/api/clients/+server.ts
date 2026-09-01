@@ -58,8 +58,8 @@ export const DELETE: RequestHandler = async ({ locals, url }) => {
                 console.error('Unable to delete client:', error);
 
                 return json(
-                        { error: 'Unable to delete client.' },
-                        { status: 500 }
+						{ error: error.code === '23503' ? 'This client has related records and cannot be removed.' : 'Unable to delete client.' },
+						{ status: error.code === '23503' ? 409 : 500 }
                 );
         }
 

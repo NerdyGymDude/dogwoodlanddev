@@ -11,8 +11,7 @@
 	Invoice,
 	Expense,
 	AppUser,
-	ActionState,
-	ProjectStatus
+	ActionState
 } from './types';
 
 class AdminStore {
@@ -54,10 +53,9 @@ class AdminStore {
 			this.notify(e.shared ? 'Event shared with client' : 'Event made private');
 		}
 	}
-	updateProject(id: string, status: ProjectStatus, phase: string) {
+	updateProject(id: string, phase: string) {
 		const p = this.projects.find((x) => x.id === id);
 		if (p) {
-			p.status = status;
 			p.phase = phase;
 			this.notify('Project updated');
 		}
@@ -96,6 +94,9 @@ class AdminStore {
 	}
 	loadPersistedProjects(projects: any[]) {
 		for (const project of [...projects].reverse()) this.addPersistedProject(project);
+	}
+	removePersistedProject(id: string) {
+		this.projects = this.projects.filter((project) => project.id !== id);
 	}
 	addPersistedTask(task: any) {
 		const existing = this.tasks.findIndex((x) => x.id === task.id);

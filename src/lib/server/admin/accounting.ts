@@ -1,176 +1,74 @@
-﻿import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { InvoiceFormData, InvoiceStatus } from '$lib/admin/forms/types';
+export type FinancialTotals = { totalProjectInvoice: number; amountPaidToDate: number; amountDue: number };
+const cents = (value: unknown) => Math.round(Number(value ?? 0) * 100) / 100;
 
-export interface AdminInvoiceRecord {
-    id: string;
-	invoiceIdentifier: string;
-	sentAt: string;
-    clientId: string;
-    projectId: string;
-    subject: string;
-    date: string;
-    dueDate: string;
-    status: InvoiceStatus;
-    amount: number;
-    amountPaid: number;
-    recipientContactIds: string[];
-    createdBy: string;
-    createdAt: string;
-    updatedAt: string;
+export function calculateFinancialTotals(
+	tasks: Array<{ task_total?: unknown; taskTotal?: unknown; billed_amount?: unknown; billedAmount?: unknown }>,
+	payments: Array<{ amount?: unknown }>
+): FinancialTotals {
+	return {
+		totalProjectInvoice: cents(tasks.reduce((sum, row) => sum + Number(row.task_total ?? row.taskTotal ?? 0), 0)),
+		amountPaidToDate: cents(payments.reduce((sum, row) => sum + Number(row.amount ?? 0), 0)),
+		amountDue: cents(tasks.reduce((sum, row) => sum + Number(row.billed_amount ?? row.billedAmount ?? 0), 0))
+	};
 }
 
-const statusToDatabase: Record<InvoiceStatus, string> = {
-    'Not Billed': 'not_billed',
-    'Billed - Not Paid': 'billed_not_paid',
-    'Billed - Partial Payment': 'billed_partial_payment',
-    'Billed - Paid': 'billed_paid'
-};
+export const mapBillingTask = (row: any) => ({ id: row.id, projectId: row.project_id, description: row.description ?? '', taskTotal: Number(row.task_total ?? 0), billedAmount: Number(row.billed_amount ?? 0), displayOrder: Number(row.display_order ?? 0) });
+export const mapPayment = (row: any) => ({ id: row.id, projectId: row.project_id, paymentMethod: row.payment_method, amount: Number(row.amount ?? 0), paymentDate: row.payment_date, checkNumber: row.check_number ?? '', checkFilePath: row.check_file_path ?? '', projectBillingTaskId: row.project_billing_task_id ?? '', memo: row.memo ?? '', createdAt: row.created_at ?? '' });
+export const mapPaymentAllocation = (row: any) => ({ id: row.id, paymentId: row.payment_id, projectBillingTaskId: row.project_billing_task_id, amount: Number(row.amount ?? 0), createdAt: row.created_at ?? '' });
+export const mapFinancialDocument = (row: any) => ({
+	id: row.id, projectId: row.project_id, documentType: row.document_type,
+	totalProjectInvoice: Number(row.total_project_invoice ?? 0), amountPaidToDate: Number(row.amount_paid_to_date ?? 0), amountDue: Number(row.amount_due ?? 0),
+	recipientContactIds: Array.isArray(row.recipient_contact_ids) ? row.recipient_contact_ids : [], pdfStoragePath: row.pdf_storage_path ?? '', createdAt: row.created_at ?? '', sentAt: row.sent_at ?? '',
+	lines: (row.financial_document_lines ?? []).map((line: any) => ({ id: line.id, description: line.description, taskTotal: Number(line.task_total ?? 0), billedAmount: Number(line.billed_amount ?? 0), displayOrder: Number(line.display_order ?? 0) })).sort((a: any, b: any) => a.displayOrder - b.displayOrder)
+});
 
-const statusFromDatabase: Record<string, InvoiceStatus> = {
-    not_billed: 'Not Billed',
-    billed_not_paid: 'Billed - Not Paid',
-    billed_partial_payment: 'Billed - Partial Payment',
-    billed_paid: 'Billed - Paid'
-};
-
-function validUuid(value: string | undefined | null) {
-    return Boolean(
-        value &&
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-                value
-            )
-    );
+export async function getFinancialData(supabase: SupabaseClient) {
+	const [tasks, payments, allocations, documents] = await Promise.all([
+		supabase.from('project_billing_tasks').select('*').order('display_order'),
+		supabase.from('project_payments').select('*').order('payment_date', { ascending: false }),
+		supabase.from('project_payment_allocations').select('*').order('created_at'),
+		supabase.from('financial_documents').select('*, financial_document_lines(*)').eq('document_type', 'invoice').order('created_at', { ascending: false })
+	]);
+	if (tasks.error) throw tasks.error; if (payments.error) throw payments.error; if (allocations.error) throw allocations.error; if (documents.error) throw documents.error;
+	return { projectBillingTasks: (tasks.data ?? []).map(mapBillingTask), projectPayments: (payments.data ?? []).map(mapPayment), projectPaymentAllocations: (allocations.data ?? []).map(mapPaymentAllocation), financialDocuments: (documents.data ?? []).map(mapFinancialDocument) };
 }
 
-function parseAmount(value: string) {
-    const amount = Number(value.replace(/[$,]/g, ''));
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error('Invoice amount must be greater than zero.');
-    }
-
-    return amount;
+export async function loadProjectFinancialState(supabase: SupabaseClient, projectId: string) {
+	const [project, tasks, payments] = await Promise.all([
+		supabase.from('projects').select('id, name, project_number, client_id').eq('id', projectId).single(),
+		supabase.from('project_billing_tasks').select('*').eq('project_id', projectId).order('display_order'),
+		supabase.from('project_payments').select('*').eq('project_id', projectId).order('payment_date', { ascending: false })
+	]);
+	if (project.error) throw project.error; if (tasks.error) throw tasks.error; if (payments.error) throw payments.error;
+	return { project: project.data, tasks: tasks.data ?? [], payments: payments.data ?? [], totals: calculateFinancialTotals(tasks.data ?? [], payments.data ?? []) };
 }
 
-function mapInvoice(row: any): AdminInvoiceRecord {
-    return {
-        id: row.id,
-		invoiceIdentifier: row.invoice_identifier ?? '',
-		sentAt: row.sent_at ?? '',
-        clientId: row.client_id ?? '',
-        projectId: row.project_id ?? '',
-        subject: row.subject ?? '',
-        date: row.invoice_date ?? '',
-        dueDate: row.due_date ?? '',
-        status: statusFromDatabase[row.status] ?? 'Not Billed',
-        amount: Number(row.amount ?? 0),
-        amountPaid: Number(row.amount_paid ?? 0),
-        recipientContactIds: Array.isArray(row.recipient_contact_ids)
-            ? row.recipient_contact_ids
-            : [],
-        createdBy: row.created_by ?? '',
-        createdAt: row.created_at ?? '',
-        updatedAt: row.updated_at ?? ''
-    };
+export async function getProjectFinancialData(supabase: SupabaseClient, projectId: string) {
+	const [tasks, payments] = await Promise.all([
+		supabase.from('project_billing_tasks').select('*').eq('project_id', projectId).order('display_order'),
+		supabase.from('project_payments').select('*').eq('project_id', projectId).order('payment_date', { ascending: false })
+	]);
+	if (tasks.error) throw tasks.error;
+	if (payments.error) throw payments.error;
+	const paymentIds = (payments.data ?? []).map((payment) => payment.id);
+	const allocations = paymentIds.length
+		? await supabase.from('project_payment_allocations').select('*').in('payment_id', paymentIds).order('created_at')
+		: { data: [], error: null };
+	if (allocations.error) throw allocations.error;
+	return {
+		tasks: (tasks.data ?? []).map(mapBillingTask),
+		payments: (payments.data ?? []).map(mapPayment),
+		allocations: (allocations.data ?? []).map(mapPaymentAllocation)
+	};
 }
 
-export async function getInvoices(supabase: SupabaseClient) {
-    const { data, error } = await supabase
-        .from('invoices')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    return (data ?? []).map(mapInvoice);
+export function validateTaskInput(input: { description?: unknown; taskTotal?: unknown; billedAmount?: unknown }) {
+	const description = String(input.description ?? '').trim(); const taskTotal = cents(input.taskTotal); const billedAmount = cents(input.billedAmount);
+	if (!description) throw new Error('Description is required.');
+	if (!Number.isFinite(taskTotal) || taskTotal < 0) throw new Error('Amount must be zero or greater.');
+	if (!Number.isFinite(billedAmount) || billedAmount < 0) throw new Error('Billed Amount must be zero or greater.');
+	if (billedAmount > taskTotal) throw new Error('Billed Amount cannot exceed Amount.');
+	return { description, taskTotal, billedAmount };
 }
-
-export async function createInvoice(
-    supabase: SupabaseClient,
-    userId: string,
-    form: InvoiceFormData
-) {
-    if (!validUuid(form.clientId)) {
-        throw new Error('A valid client is required.');
-    }
-
-    if (!validUuid(form.projectId)) {
-        throw new Error('A valid project is required.');
-    }
-
-    const subject = form.subject.trim();
-
-    if (!subject) {
-        throw new Error('Invoice subject is required.');
-    }
-
-    if (!form.date) {
-        throw new Error('Invoice date is required.');
-    }
-
-    const recipientContactIds = form.recipientContactIds.filter(validUuid);
-
-    if (recipientContactIds.length !== form.recipientContactIds.length) {
-        throw new Error('One or more invoice contacts are invalid.');
-    }
-
-	const { data: project, error: projectError } = await supabase
-		.from('projects')
-		.select('project_number, client_id')
-		.eq('id', form.projectId)
-		.single();
-
-	if (projectError) throw projectError;
-	if (project.client_id !== form.clientId) throw new Error('The selected project does not belong to this client.');
-
-	const projectNumber = String(project.project_number ?? '').trim();
-	if (!projectNumber) throw new Error('The selected project does not have a Project ID.');
-	const identifierPattern = new RegExp(
-		`^${projectNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:-(\\d+))?$`,
-		'i'
-	);
-
-	for (let attempt = 0; attempt < 5; attempt += 1) {
-		const { data: history, error: historyError } = await supabase
-			.from('invoices')
-			.select('invoice_identifier')
-			.eq('project_id', form.projectId)
-			.not('invoice_identifier', 'is', null);
-
-		if (historyError) throw historyError;
-
-		const nextSequence = (history ?? []).reduce((highest, row) => {
-			const match = String(row.invoice_identifier ?? '').match(identifierPattern);
-			if (!match) return highest;
-			return Math.max(highest, match[1] ? Number(match[1]) : 1);
-		}, 0) + 1;
-		const invoiceIdentifier = nextSequence === 1
-			? projectNumber
-			: `${projectNumber}-${String(nextSequence).padStart(2, '0')}`;
-
-		const { data, error } = await supabase
-			.from('invoices')
-			.insert({
-            client_id: form.clientId,
-            project_id: form.projectId,
-			invoice_identifier: invoiceIdentifier,
-            subject,
-            invoice_date: form.date,
-            due_date: form.dueDate || null,
-            status: 'billed_not_paid',
-            amount: parseAmount(form.amount),
-            amount_paid: 0,
-            recipient_contact_ids: recipientContactIds,
-            created_by: userId
-            })
-			.select('*')
-			.single();
-
-		if (!error) return mapInvoice(data);
-		if (error.code !== '23505') throw error;
-	}
-
-	throw new Error('Unable to reserve a unique Invoice Identifier. Please try again.');
-}
-

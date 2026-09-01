@@ -22,7 +22,7 @@
 
 <aside class="sidebar">
 	<a class="brand" href="/admin">
-		<img src="/images/dogwood-land-dev-logo-main.png" alt="Dogwood" />
+		<img src="/images/dogwoodlogo-transparent.png" alt="Dogwood" />
 		<span>ADMIN PORTAL</span>
 	</a>
 

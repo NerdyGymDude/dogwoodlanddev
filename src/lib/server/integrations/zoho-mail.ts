@@ -107,10 +107,9 @@ export async function discoverZohoAccountId(emailAddress: string) {
 
 	const accounts = Array.isArray(result.data) ? (result.data as ZohoAccount[]) : [];
 
-	const account =
-		accounts.find(
-			(item) => item.primaryEmailAddress?.toLowerCase() === emailAddress.toLowerCase()
-		);
+	const account = accounts.find(
+		(item) => item.primaryEmailAddress?.toLowerCase() === emailAddress.toLowerCase()
+	);
 
 	if (!account?.accountId) {
 		throw new Error(`No Zoho Mail account ID was found for ${emailAddress}.`);
@@ -138,7 +137,77 @@ export type SendZohoMailInput = {
 	to: string;
 	subject: string;
 	content: string;
+	attachments?: File[];
 };
+
+type ZohoAttachment = {
+	storeName: string;
+	attachmentName: string;
+	attachmentPath: string;
+};
+
+export const EMAIL_ATTACHMENT_MAX_FILES = 5;
+export const EMAIL_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
+const allowedAttachmentExtensions = new Set([
+	'pdf',
+	'doc',
+	'docx',
+	'xls',
+	'xlsx',
+	'csv',
+	'txt',
+	'jpg',
+	'jpeg',
+	'png'
+]);
+
+export function validateEmailAttachments(values: FormDataEntryValue[]) {
+	const attachments = values.filter((value): value is File => value instanceof File);
+	if (attachments.length !== values.length) throw new Error('Invalid email attachment.');
+	if (attachments.length > EMAIL_ATTACHMENT_MAX_FILES) {
+		throw new Error('Maximum 5 attachments allowed.');
+	}
+	if (attachments.some((file) => file.size === 0)) throw new Error('Attachments cannot be empty.');
+	if (attachments.reduce((total, file) => total + file.size, 0) > EMAIL_ATTACHMENT_MAX_BYTES) {
+		throw new Error('Attachments must be 4 MB or less combined.');
+	}
+	if (
+		attachments.some(
+			(file) => !allowedAttachmentExtensions.has(file.name.split('.').pop()?.toLowerCase() ?? '')
+		)
+	) {
+		throw new Error(
+			'Attachments must be PDF, DOC, DOCX, XLS, XLSX, CSV, TXT, JPG, JPEG, or PNG files.'
+		);
+	}
+	return attachments;
+}
+
+function normalizeUploadedAttachments(result: unknown, expectedCount: number): ZohoAttachment[] {
+	const response = result as { data?: unknown } | null;
+	const raw = Array.isArray(response?.data)
+		? response.data
+		: response?.data &&
+			  typeof response.data === 'object' &&
+			  Array.isArray((response.data as { attachments?: unknown }).attachments)
+			? (response.data as { attachments: unknown[] }).attachments
+			: [];
+	const attachments = raw.map((value) => {
+		const item = value as Partial<ZohoAttachment>;
+		return {
+			storeName: typeof item.storeName === 'string' ? item.storeName : '',
+			attachmentName: typeof item.attachmentName === 'string' ? item.attachmentName : '',
+			attachmentPath: typeof item.attachmentPath === 'string' ? item.attachmentPath : ''
+		};
+	});
+	if (
+		attachments.length !== expectedCount ||
+		attachments.some((item) => !item.storeName || !item.attachmentName || !item.attachmentPath)
+	) {
+		throw new Error('Zoho returned invalid attachment upload details.');
+	}
+	return attachments;
+}
 
 export async function sendZohoMail(input: SendZohoMailInput) {
 	let mailbox = await getZohoMailbox(input.from);
@@ -146,6 +215,26 @@ export async function sendZohoMail(input: SendZohoMailInput) {
 	const accountId = mailbox.zoho_account_id ?? (await discoverZohoAccountId(input.from));
 
 	mailbox = await getZohoMailbox(input.from);
+	let attachments: ZohoAttachment[] | undefined;
+
+	if (input.attachments?.length) {
+		const uploadBody = new FormData();
+		for (const file of input.attachments) uploadBody.append('attach', file, file.name);
+		const uploadResponse = await fetch(
+			`https://mail.zoho.com/api/accounts/${accountId}/messages/attachments?uploadType=multipart&isInline=false`,
+			{
+				method: 'POST',
+				headers: { Authorization: `Zoho-oauthtoken ${mailbox.access_token}` },
+				body: uploadBody
+			}
+		);
+		const uploadResult = await uploadResponse.json().catch(() => null);
+		if (!uploadResponse.ok) {
+			console.error('Zoho attachment-upload request failed:', uploadResponse.status);
+			throw new Error('Zoho could not upload the email attachments.');
+		}
+		attachments = normalizeUploadedAttachments(uploadResult, input.attachments.length);
+	}
 
 	const response = await fetch(`https://mail.zoho.com/api/accounts/${accountId}/messages`, {
 		method: 'POST',
@@ -158,7 +247,8 @@ export async function sendZohoMail(input: SendZohoMailInput) {
 			toAddress: input.to,
 			subject: input.subject,
 			content: input.content,
-			mailFormat: 'html'
+			mailFormat: 'html',
+			...(attachments ? { attachments } : {})
 		})
 	});
 
@@ -291,51 +381,38 @@ export async function getZohoMessageContent(
 	};
 }
 
-export async function markZohoMessageRead(
-        emailAddress: string,
-        messageId: string
-) {
-        if (!messageId) {
-                throw new Error('Zoho message ID is required.');
-        }
+export async function markZohoMessageRead(emailAddress: string, messageId: string) {
+	if (!messageId) {
+		throw new Error('Zoho message ID is required.');
+	}
 
-        let mailbox = await getZohoMailbox(emailAddress);
+	let mailbox = await getZohoMailbox(emailAddress);
 
-        const accountId =
-                mailbox.zoho_account_id ?? (await discoverZohoAccountId(emailAddress));
+	const accountId = mailbox.zoho_account_id ?? (await discoverZohoAccountId(emailAddress));
 
-        mailbox = await getZohoMailbox(emailAddress);
+	mailbox = await getZohoMailbox(emailAddress);
 
-        const response = await fetch(
-                `https://mail.zoho.com/api/accounts/${accountId}/updatemessage`,
-                {
-                        method: 'PUT',
-                        headers: {
-                                Authorization: `Zoho-oauthtoken ${mailbox.access_token}`,
-                                'Content-Type': 'application/json'
-                        },
-                        body: `{"mode":"markAsRead","messageId":[${messageId}]}`
-                }
-        );
+	const response = await fetch(`https://mail.zoho.com/api/accounts/${accountId}/updatemessage`, {
+		method: 'PUT',
+		headers: {
+			Authorization: `Zoho-oauthtoken ${mailbox.access_token}`,
+			'Content-Type': 'application/json'
+		},
+		body: `{"mode":"markAsRead","messageId":[${messageId}]}`
+	});
 
-        const result = await response.json().catch(() => null);
+	const result = await response.json().catch(() => null);
 
-        console.log('Zoho mark-as-read response:', {
-                httpStatus: response.status,
-                mailbox: emailAddress,
-                accountId,
-                messageId,
-                zohoStatus: result?.status ?? null,
-                zohoData: result?.data ?? null
-        });
+	console.log('Zoho mark-as-read response:', {
+		httpStatus: response.status,
+		mailbox: emailAddress,
+		accountId,
+		messageId,
+		zohoStatus: result?.status ?? null,
+		zohoData: result?.data ?? null
+	});
 
-        if (
-                !response.ok ||
-                result?.status?.code !== 200 ||
-                result?.status?.description !== 'success'
-        ) {
-                throw new Error(
-                        `Zoho mark-as-read failed: ${result?.status?.description ?? response.status}`
-                );
-        }
+	if (!response.ok || result?.status?.code !== 200 || result?.status?.description !== 'success') {
+		throw new Error(`Zoho mark-as-read failed: ${result?.status?.description ?? response.status}`);
+	}
 }

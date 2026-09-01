@@ -12,7 +12,7 @@
 <main class="login-page">
 	<section class="login-card">
 		<a class="brand" href="/" aria-label="Dogwood Land Development home">
-			<img src="/images/dogwood-land-dev-logo-main.png" alt="Dogwood Land Development" />
+			<img src="/images/dogwoodlogo-transparent.png" alt="Dogwood Land Development" />
 		</a>
 
 		<div class="heading">

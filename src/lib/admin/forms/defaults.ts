@@ -74,8 +74,10 @@ export function createContactForm(): ContactFormData {
 }
 
 export function createProjectForm(): ProjectFormData {
+	const { clientVisible: _clientVisible, ...base } = createBaseForm();
+
 	return {
-		...createBaseForm(),
+		...base,
 		projectNumber: '',
 		projectType: '',
 		address: '',
@@ -114,9 +116,10 @@ export function createInvoiceForm(): InvoiceFormData {
 		projectId: '',
 		subject: '',
 		date: today(),
-		status: 'Billed - Not Paid',
+		status: 'Draft',
 		dueDate: '',
 		amount: '',
+		taskLines: [],
 		recipientContactIds: [],
 		attachments: []
 	};

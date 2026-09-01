@@ -118,7 +118,20 @@ if (!createError) {
 		);
 	}
 
+	const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
+		password,
+		email_confirm: true,
+		user_metadata: {
+			full_name: fullName
+		}
+	});
+
+	if (updateError) {
+		throw updateError;
+	}
+
 	console.log(`Existing Auth user found: ${email}`);
+	console.log(`Updated password for existing Auth user: ${email}`);
 } else {
 	throw createError;
 }

@@ -21,6 +21,7 @@
 	import ReportsView from '$lib/admin/reports/ReportsView.svelte';
 	import SettingsView from '$lib/admin/settings/SettingsView.svelte';
 	import AdminLegacyModal from '$lib/admin/modals/AdminLegacyModal.svelte';
+	import DestructiveConfirmModal from '$lib/admin/modals/DestructiveConfirmModal.svelte';
 	import InvoiceDetailModal from '$lib/admin/accounting/InvoiceDetailModal.svelte';
 
 	import type {
@@ -31,7 +32,7 @@
 		ProjectFormData,
 		TaskFormData
 	} from '$lib/admin/forms/types';
-	import type { Client, Invoice, ProjectStatus } from '$lib/admin/types';
+	import type { Client, FinancialDocument, FinancialTask, Invoice, ProjectPayment, ProjectPaymentAllocation } from '$lib/admin/types';
 	import type { PageData } from './$types';
 
 	type InboxSearchMessage = {
@@ -56,7 +57,15 @@
 	let selectedClient = $state('');
 	let moreOpen = $state(false);
 	let modal = $state('');
+	let composeContactId = $state('');
+	let removeClientOpen = $state(false);
+	let removeProjectOpen = $state(false);
 	let selectedInvoice = $state<Invoice | null>(null);
+	let invoiceToEdit = $state<Invoice | null>(null);
+	let projectBillingTasks = $state<FinancialTask[]>([]);
+	let projectPayments = $state<ProjectPayment[]>([]);
+	let projectPaymentAllocations = $state<ProjectPaymentAllocation[]>([]);
+	let financialDocuments = $state<FinancialDocument[]>([]);
 
 	let quickAddOpen = $state(false);
 	let quickAddType = $state<AdminRecordType | null>(null);
@@ -69,13 +78,9 @@
 	let inboxSearchMessages = $state<InboxSearchMessage[]>([]);
 	let inboxUnreadCount = $state(0);
 
-        const urgentNotificationCount = $derived(
-                store.actions.filter(
-                        (action) =>
-                                action.state !== 'Done' &&
-                                action.priority === 'High'
-                ).length
-        );
+	const urgentNotificationCount = $derived(
+		store.actions.filter((action) => action.state !== 'Done' && action.priority === 'High').length
+	);
 
 	const project = $derived(store.projects.find((item) => item.id === selectedProject));
 	const client = $derived(store.clients.find((item) => item.id === selectedClient));
@@ -130,6 +135,30 @@
 		go('client');
 	}
 
+	async function removeSelectedClient() {
+		if (!client) return;
+		const response = await fetch(`/admin/api/clients?id=${encodeURIComponent(client.id)}`, { method: 'DELETE' });
+		const result = await response.json().catch(() => ({}));
+		if (!response.ok) { store.notify(result.error || 'Unable to remove client'); return; }
+		const name = client.name;
+		store.removePersistedClient(client.id);
+		removeClientOpen = false;
+		store.notify(`${name} removed`);
+		go('clients');
+	}
+
+	async function removeSelectedProject() {
+		if (!project) return;
+		const response = await fetch(`/admin/api/projects?id=${encodeURIComponent(project.id)}`, { method: 'DELETE' });
+		const result = await response.json().catch(() => ({}));
+		if (!response.ok) { store.notify(result.error || 'Unable to remove project'); return; }
+		const name = project.name;
+		store.removePersistedProject(project.id);
+		removeProjectOpen = false;
+		store.notify(`${name} removed`);
+		go('projects');
+	}
+
 	function chooseComponentSearchResult(result: SearchRecord) {
 		if (result.type === 'Project') {
 			openProject(result.id);
@@ -155,6 +184,7 @@
 	function closeQuickAdd() {
 		quickAddOpen = false;
 		quickAddType = null;
+		invoiceToEdit = null;
 	}
 
 	function clientRecordFromApi(record: {
@@ -178,46 +208,17 @@
 		tertiaryContactName: string;
 		tertiaryContactPhone: string;
 		tertiaryContactEmail: string;
+		contacts: Array<{ id: string; contact_type: 'primary' | 'secondary' | 'tertiary'; name: string | null; phone: string | null; email: string | null }>;
 	}): Client {
-		const contacts: Client['contacts'] = [];
-
-		if (record.primaryContactName || record.primaryContactPhone || record.primaryContactEmail) {
-			contacts.push({
-				id: record.primaryContactId,
-				name: record.primaryContactName,
-				role: 'Primary Contact',
-				email: record.primaryContactEmail,
-				phone: record.primaryContactPhone,
-				preferred: 'Email',
-				primary: true
-			});
-		}
-
-		if (
-			record.secondaryContactName ||
-			record.secondaryContactPhone ||
-			record.secondaryContactEmail
-		) {
-			contacts.push({
-				id: record.secondaryContactId,
-				name: record.secondaryContactName,
-				role: 'Secondary Contact',
-				email: record.secondaryContactEmail,
-				phone: record.secondaryContactPhone,
-				preferred: 'Email'
-			});
-		}
-
-		if (record.tertiaryContactName || record.tertiaryContactPhone || record.tertiaryContactEmail) {
-			contacts.push({
-				id: record.tertiaryContactId,
-				name: record.tertiaryContactName,
-				role: 'Tertiary Contact',
-				email: record.tertiaryContactEmail,
-				phone: record.tertiaryContactPhone,
-				preferred: 'Email'
-			});
-		}
+		const contacts: Client['contacts'] = record.contacts.map((contact) => ({
+			id: contact.id,
+			name: contact.name ?? '',
+			role: `${contact.contact_type[0].toUpperCase()}${contact.contact_type.slice(1)} Contact`,
+			email: contact.email ?? '',
+			phone: contact.phone ?? '',
+			preferred: 'Email',
+			primary: contact.contact_type === 'primary'
+		}));
 
 		return {
 			id: record.id,
@@ -258,14 +259,6 @@
 		}).format(date);
 	}
 
-	function projectStatus(value: string): ProjectStatus {
-		if (value === 'active') return 'Active';
-		if (value === 'completed') return 'Completed';
-		if (value === 'canceled') return 'Cancelled';
-
-		return 'Pending';
-	}
-
 	function projectRecordFromApi(record: any) {
 		return {
 			id: record.id,
@@ -273,10 +266,14 @@
 			name: record.name,
 			clientId: record.clientId || '',
 			address: [record.address, record.city, record.state, record.zip].filter(Boolean).join(', '),
-			status: projectStatus(record.status),
+			streetAddress: record.address || '',
+			city: record.city || '',
+			state: record.state || '',
+			zip: record.zip || '',
 			phase: record.phase || 'New',
 			summary: record.description || record.notes || '',
 			description: record.description || '',
+			notes: record.notes || '',
 			projectType: record.projectType || '',
 			nextMilestone: record.targetCompletionDate
 				? `Target ${formatDateShort(record.targetCompletionDate)}`
@@ -307,11 +304,7 @@
 							? 'Low'
 							: 'Medium',
 			status:
-				record.status === 'completed'
-					? 'Done'
-					: record.status === 'pending'
-						? 'Waiting'
-						: 'Open',
+				record.status === 'completed' ? 'Done' : record.status === 'pending' ? 'Waiting' : 'Open',
 			assignee: record.assignedTo || 'Unassigned'
 		};
 	}
@@ -329,7 +322,6 @@
 		};
 	}
 
-
 	function invoiceRecordFromApi(record: any): Invoice {
 		return {
 			id: record.id,
@@ -345,7 +337,8 @@
 			amountPaid: Number(record.amountPaid || 0),
 			recipientContactIds: Array.isArray(record.recipientContactIds)
 				? record.recipientContactIds
-				: []
+				: [],
+			taskLines: Array.isArray(record.taskLines) ? record.taskLines : []
 		};
 	}
 
@@ -355,6 +348,27 @@
 
 	function closeInvoice() {
 		selectedInvoice = null;
+	}
+
+	function editInvoice(invoice: Invoice) {
+		selectedInvoice = null;
+		invoiceToEdit = invoice;
+		quickAddType = 'invoice';
+		quickAddOpen = true;
+	}
+
+	function updateFinancialRecord(kind: 'task' | 'payment' | 'allocation' | 'document', value: FinancialTask | ProjectPayment | ProjectPaymentAllocation | FinancialDocument) {
+		if (kind === 'task') { const task = value as FinancialTask; projectBillingTasks = [...projectBillingTasks.filter((item) => item.id !== task.id), task].sort((a, b) => a.displayOrder - b.displayOrder); }
+		else if (kind === 'payment') projectPayments = [value as ProjectPayment, ...projectPayments];
+		else if (kind === 'allocation') projectPaymentAllocations = [value as ProjectPaymentAllocation, ...projectPaymentAllocations];
+		else financialDocuments = [value as FinancialDocument, ...financialDocuments];
+	}
+
+	function syncProjectFinancialState(projectId: string, state: { tasks: FinancialTask[]; payments: ProjectPayment[]; allocations: ProjectPaymentAllocation[] }) {
+		const previousPaymentIds = new Set(projectPayments.filter((payment) => payment.projectId === projectId).map((payment) => payment.id));
+		projectBillingTasks = [...projectBillingTasks.filter((task) => task.projectId !== projectId), ...state.tasks].sort((a, b) => a.displayOrder - b.displayOrder);
+		projectPayments = [...projectPayments.filter((payment) => payment.projectId !== projectId), ...state.payments];
+		projectPaymentAllocations = [...projectPaymentAllocations.filter((allocation) => !previousPaymentIds.has(allocation.paymentId)), ...state.allocations];
 	}
 
 	async function saveQuickAdd(type: AdminRecordType, formData: unknown) {
@@ -429,14 +443,15 @@
 
 			if (type === 'invoice') {
 				const invoiceForm = formData as InvoiceFormData;
-				const response = await fetch('/admin/api/invoices', {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({
-						...invoiceForm,
-						status: 'Billed - Not Paid'
-					})
-				});
+				const editingId = invoiceToEdit?.id;
+				const response = await fetch(
+					`/admin/api/invoices${editingId ? `?id=${encodeURIComponent(editingId)}` : ''}`,
+					{
+						method: editingId ? 'PUT' : 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify(invoiceForm)
+					}
+				);
 
 				const result = await response.json();
 
@@ -444,7 +459,28 @@
 
 				const invoice = invoiceRecordFromApi(result.invoice);
 				store.addPersistedInvoice(invoice);
-				store.notify('Invoice created');
+				for (const line of invoice.taskLines) {
+					if (!line.projectBillingTaskId) continue;
+					const existingTask: any = projectBillingTasks.find(
+						(item: any) => item.id === line.projectBillingTaskId
+					);
+					const task: any = {
+						id: line.projectBillingTaskId,
+						projectId: invoice.projectId ?? '',
+						description: line.description,
+						taskTotal: line.taskTotal,
+						displayOrder: line.displayOrder,
+						previouslyBilledPercentage: line.previouslyBilledPercentage,
+						previouslyBilledAmount:
+							existingTask?.previouslyBilledAmount ?? line.previouslyBilledAmount,
+						paidAmount: existingTask ? existingTask.paidAmount : line.paidAmount
+					};
+					const index = projectBillingTasks.findIndex((item: any) => item.id === task.id);
+					if (index >= 0) projectBillingTasks[index] = task;
+					else projectBillingTasks.push(task);
+				}
+				projectBillingTasks = [...projectBillingTasks];
+				store.notify(editingId ? 'Invoice updated' : 'Invoice saved');
 				closeQuickAdd();
 				openInvoice(invoice);
 				return;
@@ -460,11 +496,14 @@
 	}
 
 	onMount(() => {
+		projectBillingTasks = data.projectBillingTasks ?? [];
+		projectPayments = data.projectPayments ?? [];
+		projectPaymentAllocations = data.projectPaymentAllocations ?? [];
+		financialDocuments = data.financialDocuments ?? [];
 		store.loadPersistedClients(data.clients.map(clientRecordFromApi));
 		store.loadPersistedProjects(data.projects.map(projectRecordFromApi));
 		store.loadPersistedTasks(data.tasks.map(taskRecordFromApi));
 		store.loadPersistedEvents(data.events.map(eventRecordFromApi));
-		store.loadPersistedInvoices(data.invoices.map(invoiceRecordFromApi));
 
 		if ('serviceWorker' in navigator) {
 			navigator.serviceWorker.register('/service-worker.js').catch(() => {});
@@ -480,131 +519,94 @@
 >
 
 <div class="app">
-        <DesktopSidebar
-                {view}
-                {inboxUnreadCount}
-                ongo={go}
-        />
+	<DesktopSidebar {view} {inboxUnreadCount} ongo={go} />
 
-        <main class="main">
-                <AdminTopbar
-                        records={searchableRecords}
-                        onselect={chooseComponentSearchResult}
-                        onquickadd={() => openQuickAdd()}
-                        notificationCount={urgentNotificationCount}
-                        onnotify={() => store.notify('No new urgent notifications')}
-                />
+	<main class="main">
+		<AdminTopbar
+			records={searchableRecords}
+			onselect={chooseComponentSearchResult}
+			onquickadd={() => openQuickAdd()}
+			notificationCount={urgentNotificationCount}
+			onnotify={() => store.notify('No new urgent notifications')}
+		/>
 
-                <div class="content">
-                        {#if view === 'home'}
-                                <ActionCenter
-                                        onopenproject={openProject}
-                                        onopenclient={openClient}
-                                        ongoto={go}
-                                        onquickadd={(type) => openQuickAdd(type ?? null)}
-                                />
-                        {:else if view === 'clients'}
-                                <ClientsView
-                                        onopenclient={openClient}
-                                        onquickadd={() => openQuickAdd('client')}
-                                />
-                        {:else if view === 'client' && client}
-                                <ClientDetailView
-                                        {client}
-                                        ongoback={() => go('clients')}
-                                        onopenproject={openProject}
-                                        onemail={() => (modal = 'email')}
-                                        onedit={() => (modal = 'editclient')}
-                                        onremove={async () => {
-                                                if (!confirm(`Remove ${client.name}?`)) return;
+		<div class="content">
+			{#if view === 'home'}
+				<ActionCenter
+					onopenproject={openProject}
+					onopenclient={openClient}
+					ongoto={go}
+					onquickadd={(type) => openQuickAdd(type ?? null)}
+					financialTasks={projectBillingTasks}
+					payments={projectPayments}
+					{financialDocuments}
+				/>
+			{:else if view === 'clients'}
+				<ClientsView onopenclient={openClient} onquickadd={() => openQuickAdd('client')} />
+			{:else if view === 'client' && client}
+				<ClientDetailView
+					{client}
+					ongoback={() => go('clients')}
+					onopenproject={openProject}
+					onemail={(contactId = '') => { composeContactId = contactId; modal = 'email'; }}
+					onedit={() => (modal = 'editclient')}
+					onremove={() => (removeClientOpen = true)}
+					oncreateproject={() => openQuickAdd('project')}
+				/>
+			{:else if view === 'projects'}
+				<ProjectsView
+					onopenproject={openProject}
+					onquickadd={() => openQuickAdd('project')}
+					{money}
+				/>
+			{:else if view === 'project' && project}
+					<ProjectDetailView
+					{project}
+					ongoback={() => go('projects')}
+					onopenclient={openClient}
+					onuploaddocument={() => openQuickAdd('document')}
+					financialTasks={projectBillingTasks.filter((item) => item.projectId === project.id)}
+					payments={projectPayments.filter((item) => item.projectId === project.id)}
+					allocations={projectPaymentAllocations.filter((allocation) => projectPayments.some((payment) => payment.projectId === project.id && payment.id === allocation.paymentId))}
+					financialDocuments={financialDocuments.filter((item) => item.projectId === project.id)}
+					onfinancialchange={updateFinancialRecord}
+					onfinancialsync={syncProjectFinancialState}
+					onedit={() => (modal = 'editproject')}
+					onremove={() => (removeProjectOpen = true)}
+					{money}
+				/>
+			{:else if view === 'inbox'}
+				<InboxView
+					initialInboxes={data.zohoInboxes ?? []}
+					onmailchange={handleInboxMailChange}
+					oncompose={() => (modal = 'email')}
+				/>
+			{:else if view === 'tasks'}
+				<TasksView onopenproject={openProject} onquickadd={() => openQuickAdd('task')} />
+			{:else if view === 'documents'}
+				<DocumentsView onopenproject={openProject} onquickadd={() => openQuickAdd('document')} />
+			{:else if view === 'calendar'}
+				<CalendarView onquickadd={() => openQuickAdd('event')} />
+			{:else if view === 'accounting'}
+				<AccountingView tasks={projectBillingTasks} payments={projectPayments} documents={financialDocuments} onopenproject={openProject} />
+			{:else if view === 'vendors'}
+				<VendorsView onaddvendor={() => (modal = 'vendor')} {money} />
+			{:else if view === 'reports'}
+				<ReportsView onschedule={() => (modal = 'schedule')} {money} />
+			{:else if view === 'settings'}
+				<SettingsView oninvite={() => (modal = 'user')} />
+			{/if}
+		</div>
+	</main>
 
-                                                const response = await fetch(
-                                                        `/admin/api/clients?id=${encodeURIComponent(client.id)}`,
-                                                        { method: 'DELETE' }
-                                                );
-
-                                                if (!response.ok) {
-                                                        store.notify('Unable to remove client');
-                                                        return;
-                                                }
-
-                                                store.removePersistedClient(client.id);
-                                                store.notify(`${client.name} removed`);
-                                                go('clients');
-                                        }}
-                                        oncreateproject={() => openQuickAdd('project')}
-                                />
-                        {:else if view === 'projects'}
-                                <ProjectsView
-                                        onopenproject={openProject}
-                                        onquickadd={() => openQuickAdd('project')}
-                                        {money}
-                                />
-                        {:else if view === 'project' && project}
-                                <ProjectDetailView
-                                        {project}
-                                        ongoback={() => go('projects')}
-                                        onopenclient={openClient}
-										onuploaddocument={() => openQuickAdd('document')}
-                                        oncreateinvoice={() => {
-                                                quickAddType = 'invoice';
-                                                quickAddOpen = true;
-                                        }}
-                                        onviewinvoice={openInvoice}
-                                        onedit={() => (modal = 'editproject')}
-                                        {money}
-                                />
-                        {:else if view === 'inbox'}
-                                <InboxView
-                                        initialInboxes={data.zohoInboxes ?? []}
-                                        onmailchange={handleInboxMailChange}
-                                        oncompose={() => (modal = 'email')}
-                                />
-                        {:else if view === 'tasks'}
-                                <TasksView
-                                        onopenproject={openProject}
-                                        onquickadd={() => openQuickAdd('task')}
-                                />
-                        {:else if view === 'documents'}
-                                <DocumentsView
-                                        onopenproject={openProject}
-                                        onquickadd={() => openQuickAdd('document')}
-                                />
-                        {:else if view === 'calendar'}
-                                <CalendarView
-                                        onquickadd={() => openQuickAdd('event')}
-                                />
-                        {:else if view === 'accounting'}
-                                <AccountingView
-                                        oncreateinvoice={() => openQuickAdd('invoice')}
-                                        onviewinvoice={openInvoice}
-                                />
-                        {:else if view === 'vendors'}
-                                <VendorsView
-                                        onaddvendor={() => (modal = 'vendor')}
-                                        {money}
-                                />
-                        {:else if view === 'reports'}
-                                <ReportsView
-                                        onschedule={() => (modal = 'schedule')}
-                                        {money}
-                                />
-                        {:else if view === 'settings'}
-                                <SettingsView
-                                        oninvite={() => (modal = 'user')}
-                                />
-                        {/if}
-                </div>
-        </main>
-
-        <MobileNavigation
-                {view}
-                {inboxUnreadCount}
-                {moreOpen}
-                ongo={go}
-                ontogglemore={() => (moreOpen = !moreOpen)}
-                onquickadd={() => openQuickAdd()}
-        />
+	<MobileNavigation
+		{view}
+		{inboxUnreadCount}
+		{moreOpen}
+		ongo={go}
+		ontogglemore={() => (moreOpen = !moreOpen)}
+		onquickadd={() => openQuickAdd()}
+	/>
 </div>
 
 <QuickAddModal
@@ -632,6 +634,8 @@
 		projectId: invoice.projectId,
 		invoiceIdentifier: invoice.invoiceIdentifier
 	}))}
+	billingTasks={[]}
+	{invoiceToEdit}
 	projects={store.projects.map((p) => ({
 		id: p.id,
 		name: p.name,
@@ -644,19 +648,11 @@
 	onsave={saveQuickAdd}
 />
 
-<AdminLegacyModal
-        {modal}
-        {project}
-        onclose={() => (modal = '')}
-        onsaved={() => {}}
-/>
+<AdminLegacyModal {modal} {project} {client} initialRecipientId={composeContactId} onclose={() => { modal = ''; composeContactId = ''; }} onsaved={(record) => { if (record) store.addPersistedProject(projectRecordFromApi(record)); }} />
 
-<InvoiceDetailModal
-	invoice={selectedInvoice}
-	onclose={closeInvoice}
-	{money}
-/>
+<DestructiveConfirmModal open={removeClientOpen && Boolean(client)} title="Remove Client" recordName={client?.name ?? ''} description="This will permanently remove this client. Related records may prevent removal." actionLabel="Remove client" onclose={() => (removeClientOpen = false)} onconfirm={removeSelectedClient} />
+<DestructiveConfirmModal open={removeProjectOpen && Boolean(project)} title="Delete Project" recordName={project?.name ?? ''} description="This will permanently remove this project. Related records may prevent removal." actionLabel="Delete project" onclose={() => (removeProjectOpen = false)} onconfirm={removeSelectedProject} />
+
+<InvoiceDetailModal invoice={selectedInvoice} onclose={closeInvoice} onedit={editInvoice} {money} />
 
 {#if store.toast}<div class="toast">âœ“ {store.toast}</div>{/if}
-
-

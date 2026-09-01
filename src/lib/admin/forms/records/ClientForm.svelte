@@ -75,22 +75,6 @@
 	</FormGrid>
 </FormSection>
 
-<FormSection title="Tertiary Contact" description="Optional third contact.">
-	<FormGrid>
-		<FormField label="Name" forId="client-tertiary-name">
-			<input id="client-tertiary-name" bind:value={value.tertiaryContactName} />
-		</FormField>
-
-		<FormField label="Phone" forId="client-tertiary-phone">
-			<input id="client-tertiary-phone" type="tel" bind:value={value.tertiaryContactPhone} />
-		</FormField>
-
-		<FormField label="Email" forId="client-tertiary-email">
-			<input id="client-tertiary-email" type="email" bind:value={value.tertiaryContactEmail} />
-		</FormField>
-	</FormGrid>
-</FormSection>
-
 <FormSection title="Mailing Address" description="Primary mailing address for this client.">
 	<FormField label="Street Address" forId="client-address">
 		<input id="client-address" bind:value={value.address} />

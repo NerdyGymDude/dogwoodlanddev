@@ -35,6 +35,8 @@
 		clients = [],
 		projects = [],
 		invoices = [],
+		billingTasks = [],
+		invoiceToEdit = null,
 		users = [],
 		vendors = [],
 		onclose,
@@ -45,9 +47,24 @@
 		initialClientId?: string;
 		initialProjectId?: string;
 		lockProjectClient?: boolean;
-		clients?: Array<{ id: string; name: string; contacts: Array<{ id: string; name: string; email: string; role: string; primary?: boolean }> }>;
+		clients?: Array<{
+			id: string;
+			name: string;
+			contacts: Array<{ id: string; name: string; email: string; role: string; primary?: boolean }>;
+		}>;
 		projects?: Array<{ id: string; name: string; clientId?: string; projectNumber?: string }>;
 		invoices?: Array<{ projectId?: string; invoiceIdentifier: string }>;
+		billingTasks?: Array<{
+			id: string;
+			projectId: string;
+			description: string;
+			taskTotal: number;
+			displayOrder: number;
+			previouslyBilledPercentage: number;
+			previouslyBilledAmount: number;
+			paidAmount: number | null;
+		}>;
+		invoiceToEdit?: import('../types').Invoice | null;
 		users?: Array<{ id: string; name: string }>;
 		vendors?: Array<{ id: string; name: string }>;
 		onclose: () => void;
@@ -67,13 +84,13 @@
 	let documentForm = $state(createDocumentForm());
 	let eventForm = $state(createEventForm());
 	let noteForm = $state(createNoteForm());
+	let submissionError = $state('');
 
-	const selectedOption = $derived(
-		quickAddOptions.find((option) => option.type === activeType)
-	);
+	const selectedOption = $derived(quickAddOptions.find((option) => option.type === activeType));
 
 	$effect(() => {
 		if (open) {
+			submissionError = '';
 			selectedType = initialType;
 			if (initialType === 'project') {
 				const nextProjectForm = createProjectForm();
@@ -88,11 +105,33 @@
 			}
 			if (initialType === 'invoice') {
 				const nextInvoiceForm = createInvoiceForm();
+				if (invoiceToEdit) {
+					nextInvoiceForm.clientId = invoiceToEdit.clientId;
+					nextInvoiceForm.projectId = invoiceToEdit.projectId ?? '';
+					nextInvoiceForm.subject = invoiceToEdit.subject;
+					nextInvoiceForm.date = invoiceToEdit.date;
+					nextInvoiceForm.dueDate = invoiceToEdit.dueDate;
+					nextInvoiceForm.status = invoiceToEdit.status as typeof nextInvoiceForm.status;
+					nextInvoiceForm.amount = String(invoiceToEdit.amount);
+					nextInvoiceForm.recipientContactIds = [...invoiceToEdit.recipientContactIds];
+					nextInvoiceForm.taskLines = invoiceToEdit.taskLines.map((line) => {
+						const task = billingTasks.find((item) => item.id === line.projectBillingTaskId);
+						return {
+							...line,
+							taskTotal: String(line.taskTotal),
+							previouslyBilledAmount:
+								task?.previouslyBilledAmount ?? line.previouslyBilledAmount ?? 0,
+							paidAmount: task ? task.paidAmount : (line.paidAmount ?? 0)
+						};
+					});
+					invoiceForm = nextInvoiceForm;
+					return;
+				}
 				nextInvoiceForm.clientId = initialClientId;
 				nextInvoiceForm.projectId = initialProjectId;
-				const primary = clients.find((client) => client.id === initialClientId)?.contacts.find(
-					(contact) => contact.primary && contact.email
-				);
+				const primary = clients
+					.find((client) => client.id === initialClientId)
+					?.contacts.find((contact) => contact.primary && contact.email);
 				nextInvoiceForm.recipientContactIds = primary ? [primary.id] : [];
 				invoiceForm = nextInvoiceForm;
 			}
@@ -101,6 +140,7 @@
 
 	function choose(type: AdminRecordType) {
 		selectedType = type;
+		submissionError = '';
 	}
 
 	function back() {
@@ -113,6 +153,7 @@
 
 	function close() {
 		selectedType = initialType;
+		submissionError = '';
 		onclose();
 	}
 
@@ -120,6 +161,11 @@
 		event.preventDefault();
 
 		if (!activeType) return;
+		if (activeType === 'project' && !projectForm.clientId.trim()) {
+			submissionError = 'Client is required to create project';
+			return;
+		}
+		submissionError = '';
 
 		const values = {
 			client: clientForm,
@@ -161,7 +207,9 @@
 					{/if}
 				</div>
 
-				<button type="button" class="close" aria-label="Close Quick Add" onclick={close}>&times;</button>
+				<button type="button" class="close" aria-label="Close Quick Add" onclick={close}
+					>&times;</button
+				>
 			</header>
 
 			{#if !activeType}
@@ -190,7 +238,14 @@
 						{:else if activeType === 'estimate'}
 							<EstimateForm value={estimateForm} {clients} {projects} {users} />
 						{:else if activeType === 'invoice'}
-							<InvoiceForm value={invoiceForm} {clients} {projects} {invoices} />
+							<InvoiceForm
+								bind:value={invoiceForm}
+								{clients}
+								{projects}
+								{invoices}
+								{billingTasks}
+								editing={Boolean(invoiceToEdit)}
+							/>
 						{:else if activeType === 'expense'}
 							<ExpenseForm value={expenseForm} {clients} {projects} {users} {vendors} />
 						{:else if activeType === 'document'}
@@ -202,10 +257,20 @@
 						{/if}
 					</div>
 
+					{#if submissionError}
+						<p class="submission-error" role="alert">{submissionError}</p>
+					{/if}
+
 					<footer class="actions">
-						<button type="button" class="secondary" onclick={back}>{initialType ? 'Cancel' : '&larr; Back'}</button>
+						<button type="button" class="secondary" onclick={back}
+							>{initialType ? 'Cancel' : '&larr; Back'}</button
+						>
 						<button type="submit" class="primary">
-							{activeType === 'document' ? 'Upload File' : `Save ${selectedOption?.label ?? ''}`}
+							{activeType === 'invoice'
+								? 'Save Invoice'
+								: activeType === 'document'
+									? 'Upload File'
+									: `Save ${selectedOption?.label ?? ''}`}
 						</button>
 					</footer>
 				</form>
@@ -215,6 +280,14 @@
 {/if}
 
 <style>
+	.submission-error {
+		margin: 0;
+		padding: 0 1.5rem 1rem;
+		color: #a44336;
+		font-size: 0.82rem;
+		font-weight: 700;
+	}
+
 	.backdrop {
 		position: fixed;
 		inset: 0;

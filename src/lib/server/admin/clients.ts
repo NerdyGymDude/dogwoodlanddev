@@ -23,6 +23,7 @@ export interface AdminClientRecord {
 	tertiaryContactName: string;
 	tertiaryContactPhone: string;
 	tertiaryContactEmail: string;
+	contacts: ClientContactRow[];
 }
 
 interface ClientContactRow {
@@ -82,7 +83,8 @@ function mapClient(row: ClientRow): AdminClientRecord {
 		tertiaryContactId: tertiary?.id ?? '',
 		tertiaryContactName: tertiary?.name ?? '',
 		tertiaryContactPhone: tertiary?.phone ?? '',
-		tertiaryContactEmail: tertiary?.email ?? ''
+		tertiaryContactEmail: tertiary?.email ?? '',
+		contacts: row.client_contacts ?? []
 	};
 }
 
@@ -173,12 +175,6 @@ export async function createClient(
 			phone: form.secondaryContactPhone,
 			email: form.secondaryContactEmail
 		},
-		{
-			type: 'tertiary' as const,
-			name: form.tertiaryContactName,
-			phone: form.tertiaryContactPhone,
-			email: form.tertiaryContactEmail
-		}
 	]
 		.filter((contact) => hasContact(contact.name, contact.phone, contact.email))
 		.map((contact) => ({
@@ -188,6 +184,9 @@ export async function createClient(
 			phone: contact.phone.trim() || null,
 			email: contact.email.trim() || null
 		}));
+	if (contacts.length && !contacts.some((contact) => contact.contact_type === 'primary')) {
+		contacts[0].contact_type = 'primary';
+	}
 
 	if (contacts.length) {
 		const { error: contactError } = await supabase

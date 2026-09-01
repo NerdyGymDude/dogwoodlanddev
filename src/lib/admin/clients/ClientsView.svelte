@@ -45,15 +45,7 @@
 			<dl>
 				<div>
 					<dt>Projects</dt>
-					<dd>{client.projectIds.length}</dd>
-				</div>
-				<div>
-					<dt>Open actions</dt>
-					<dd>
-						{store.actions.filter(
-							(action) => action.clientId === client.id && action.state !== 'Done'
-						).length}
-					</dd>
+					<dd>{store.projects.filter((project) => project.clientId === client.id).length}</dd>
 				</div>
 			</dl>
 

@@ -7,8 +7,8 @@
 	// =====================================================================
 
 	const images = {
-		logo: '/images/dogwood-land-dev-logo-main.png',
-		footerLogo: '/images/dogwood-land-dev-logo-main.png',
+		logo: '/images/dogwoodlogo-transparent.png',
+		footerLogo: '/images/dogwoodlogo-transparent.png',
 
 		about: '/service-images/about-creek.webp',
 

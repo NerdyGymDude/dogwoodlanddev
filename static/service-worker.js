@@ -1,5 +1,5 @@
 const CACHE = 'dogwood-public-v2';
-const PUBLIC_SHELL = ['/manifest.webmanifest', '/images/dogwood-land-dev-logo-main.png'];
+const PUBLIC_SHELL = ['/manifest.webmanifest', '/images/dogwoodlogo-transparent.png'];
 
 self.addEventListener('install', (event) => {
 	event.waitUntil(
