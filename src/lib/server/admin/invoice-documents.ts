@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { calculateFinancialTotals, loadProjectFinancialState, mapFinancialDocument } from './accounting';
 import { sendZohoMail } from '$lib/server/integrations/zoho-mail';
 import { createPaymentLinkToken } from '$lib/server/integrations/stripe';
+import { paperCheckInstructions } from './business-identity';
 
 const money = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -14,11 +15,12 @@ export function buildInvoiceEmailContent(
     note = '',
     paymentUrl = ''
 ) {
+	const check = paperCheckInstructions();
     const optionalNote = note.trim() && note.trim() !== 'Please find the attached invoice.' ? `<p>${escapeHtml(note.trim()).replace(/\n/g, '<br>')}</p>` : '';
     const paymentContent = paymentUrl
         ? `<p>To pay your invoice online, please visit:<br><a href="${escapeHtml(paymentUrl)}">${escapeHtml(paymentUrl)}</a></p>`
         : '';
-    return `<p>Please find your Dogwood Land Development invoice attached.</p>${optionalNote}<p>Total Project Invoice: ${money(Number(document.total_project_invoice))}<br>Amount Paid to Date: ${money(Number(document.amount_paid_to_date))}<br>Amount Due: ${money(Number(document.amount_due))}</p>${paymentContent}<p>If you would like to pay by paper check, please contact accounting@dogwoodlanddev.com to make arrangements.</p><p>Thank you,<br>Dogwood Land Development</p>`;
+	return `<p>Please find your Dogwood Land Development invoice attached.</p>${optionalNote}<p>Total Project Invoice: ${money(Number(document.total_project_invoice))}<br>Amount Paid to Date: ${money(Number(document.amount_paid_to_date))}<br>Amount Due: ${money(Number(document.amount_due))}</p>${paymentContent}<p>Make checks payable to ${escapeHtml(check.payee)} and mail to:<br>${check.addressLines.map(escapeHtml).join('<br>')}</p><p>Thank you,<br>Dogwood Land Development</p>`;
 }
 
 function drawRightAligned(page: PDFPage, value: string, right: number, y: number, size: number, font: PDFFont, color = rgb(0.121569, 0.160784, 0.215686)) {
@@ -31,6 +33,12 @@ export async function renderInvoicePdf(input: { project: any; document: any; lin
 	const pdf = await PDFDocument.load(template);
 	const font = await pdf.embedFont(StandardFonts.Helvetica);
 	const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+	const isReceiptDocument = input.documentKind === 'receipt';
+	const invoiceIdentifier = String(input.document.invoice_identifier ?? '').trim();
+	if (!isReceiptDocument) {
+		if (!invoiceIdentifier) throw new Error('Invoice identifier is required to render an invoice PDF.');
+		pdf.setTitle(invoiceIdentifier);
+	}
 	const rowsPerPage = 3;
 	const pageCount = Math.max(1, Math.ceil(input.lines.length / rowsPerPage));
 	if (pageCount > 1) {
@@ -52,7 +60,7 @@ export async function renderInvoicePdf(input: { project: any; document: any; lin
 	for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
 		const page = pdf.getPage(pageIndex);
 		const pageLines = input.lines.slice(pageIndex * rowsPerPage, (pageIndex + 1) * rowsPerPage);
-		const isReceipt = input.documentKind === 'receipt';
+		const isReceipt = isReceiptDocument;
 		if (isReceipt) {
 			page.drawRectangle({ x: 438, y: 700, width: 126, height: 48, color: white });
 			page.drawText('RECEIPT', { x: 445, y: 724, size: 28, font: bold, color: rgb(0.043137, 0.180392, 0.403922) });
@@ -63,6 +71,11 @@ export async function renderInvoicePdf(input: { project: any; document: any; lin
 		page.drawText(isReceipt ? 'Receipt Date' : 'Invoice Date', { x: 480, y: 672, size: 10.5, font: bold, color: ink });
 		page.drawText(invoiceDate, { x: 480, y: 656, size: 10.5, font, color: ink });
 		if (isReceipt && pageIndex === 0) drawRightAligned(page, `Payment Received: ${money(Number(input.paymentReceived ?? 0))}`, 564, 638, 9, bold);
+		if (!isReceipt) {
+			page.drawRectangle({ x: 410, y: 606, width: 154, height: 40, color: white });
+			page.drawText('Invoice Number', { x: 480, y: 630, size: 10.5, font: bold, color: ink });
+			drawRightAligned(page, invoiceIdentifier, 564, 613, 8.5, font, ink);
+		}
 
 		page.drawRectangle({ x: 60, y: 526, width: 226, height: 55, color: beige });
 		const billTo = [input.project.bill_to_contact, input.project.client_name, input.project.client_address, input.project.client_city_line].filter(Boolean);
@@ -98,8 +111,28 @@ export async function renderInvoicePdf(input: { project: any; document: any; lin
 		if (summaryValues[0]) drawRightAligned(page, summaryValues[0], 553, 278, 10.5, font);
 		if (summaryValues[1]) drawRightAligned(page, summaryValues[1], 553, 246, 10.5, font);
 		if (summaryValues[2]) drawRightAligned(page, summaryValues[2], 553, 214, 12, bold, white);
+
+		if (!isReceipt) {
+			const check = paperCheckInstructions();
+			const paymentFill = rgb(0.933333, 0.945098, 0.956863);
+			const verse = '"Commit to the Lord whatever you do, and he will establish your plans." - Proverbs 16:3';
+			const verseSize = 9;
+			page.drawRectangle({ x: 48, y: 92, width: 516, height: 28, color: white });
+			page.drawRectangle({ x: 48, y: 120, width: 516, height: 70, color: white });
+			page.drawRectangle({ x: 48, y: 120, width: 516, height: 66, color: paymentFill, borderColor: rule, borderWidth: 0.5 });
+			page.drawLine({ start: { x: 306, y: 120 }, end: { x: 306, y: 186 }, thickness: 0.5, color: rule });
+			page.drawText('PAYMENT OPTIONS', { x: 62, y: 171, size: 7.5, font: bold, color: ink });
+			page.drawText('Pay by ACH/Debit or Credit Card using', { x: 62, y: 155, size: 7.5, font, color: ink });
+			page.drawText('the Stripe link in the email.', { x: 62, y: 146, size: 7.5, font, color: ink });
+			page.drawText('OR', { x: 320, y: 171, size: 7.5, font: bold, color: ink });
+			page.drawText('Pay by check — make checks payable to', { x: 320, y: 158, size: 7.25, font, color: ink });
+			page.drawText(`${check.payee} and mail to:`, { x: 320, y: 149, size: 7.25, font, color: ink });
+			page.drawText(check.addressLines[0], { x: 320, y: 140, size: 7.25, font, color: ink });
+			page.drawText(check.addressLines[1], { x: 320, y: 131, size: 7.25, font, color: ink });
+			page.drawText(verse, { x: (612 - font.widthOfTextAtSize(verse, verseSize)) / 2, y: 99, size: verseSize, font, color: dueFill });
+		}
 	}
-	return pdf.save();
+	return isReceiptDocument ? pdf.save() : pdf.save({ useObjectStreams: false });
 }
 
 export function calculateReceiptAmountDue(originalInvoiceAmountDue: number, paymentAmount: number) {
@@ -391,7 +424,10 @@ export async function createAndSendInvoice(admin: SupabaseClient, userId: string
 	const ids = [...new Set([...requestedIds, ...manualEmails.map((email) => contactsByEmail.get(email)?.id ?? '').filter(Boolean)])];
 	const recipients = [...new Set([...contactRecipients, ...manualEmails])];
 	const totals = calculateFinancialTotals(state.tasks, state.payments);
-	const { data: document, error: documentError } = await admin.from('financial_documents').insert({ project_id: projectId, document_type: 'invoice', total_project_invoice: totals.totalProjectInvoice, amount_paid_to_date: totals.amountPaidToDate, amount_due: totals.amountDue, recipient_contact_ids: ids, created_by: userId }).select('*').single();
+	const { data: invoiceIdentifier, error: identifierError } = await admin.rpc('next_financial_invoice_identifier', { p_client_id: state.project.client_id });
+	if (identifierError) throw new Error(`Invoice identifier could not be allocated: ${identifierError.message}`);
+	if (typeof invoiceIdentifier !== 'string' || !invoiceIdentifier.trim()) throw new Error('Invoice identifier could not be allocated.');
+	const { data: document, error: documentError } = await admin.from('financial_documents').insert({ project_id: projectId, document_type: 'invoice', invoice_identifier: invoiceIdentifier, total_project_invoice: totals.totalProjectInvoice, amount_paid_to_date: totals.amountPaidToDate, amount_due: totals.amountDue, recipient_contact_ids: ids, created_by: userId }).select('*').single();
 	if (documentError) throw documentError;
 	const snapshotLines = state.tasks.map((task: any, index: number) => ({ financial_document_id: document.id, project_billing_task_id: task.id, description: task.description, task_total: task.task_total, billed_amount: task.billed_amount, display_order: index }));
 	const { data: lines, error: linesError } = await admin.from('financial_document_lines').insert(snapshotLines).select('*');
@@ -399,7 +435,8 @@ export async function createAndSendInvoice(admin: SupabaseClient, userId: string
 	const cityLine = (record: any) => [record?.city, record?.state, record?.zip].filter(Boolean).join(' ');
 	const renderProject = { ...state.project, ...projectDetails, bill_to_contact: selectedContacts[0]?.name ?? contactsByEmail.get(manualEmails[0])?.name ?? '', client_name: clientDetails.name ?? '', client_address: clientDetails.address ?? '', client_city_line: cityLine(clientDetails), address_line: [projectDetails.address, cityLine(projectDetails)].filter(Boolean).join(', ') };
 	const bytes = await renderInvoicePdf({ project: renderProject, document, lines: lines ?? snapshotLines });
-	const path = `financials/${projectId}/invoices/${document.id}/invoice.pdf`;
+	const filename = `${invoiceIdentifier}.pdf`;
+	const path = `financials/${projectId}/invoices/${document.id}/${filename}`;
 	const { error: uploadError } = await admin.storage.from('client-documents').upload(path, bytes, { contentType: 'application/pdf', upsert: false });
 	if (uploadError) throw uploadError;
 	const { data: stored, error: storedError } = await admin.from('financial_documents').update({ pdf_storage_path: path }).eq('id', document.id).select('*').single();
@@ -409,7 +446,7 @@ export async function createAndSendInvoice(admin: SupabaseClient, userId: string
     origin && Number(document.amount_due) > 0
       ? `${origin}/pay/${document.id}?token=${createPaymentLinkToken(document.id)}`
       : '';
-    await sendZohoMail({ from: 'accounting@dogwoodlanddev.com', to: recipients.join(','), subject: `Invoice - ${state.project.project_number ?? state.project.name}`, content: buildInvoiceEmailContent(document, message, paymentUrl), attachments: [new File([attachmentBytes], 'invoice.pdf', { type: 'application/pdf' })] });
+	await sendZohoMail({ from: 'accounting@dogwoodlanddev.com', to: recipients.join(','), subject: `${invoiceIdentifier} - ${state.project.name}`, content: buildInvoiceEmailContent(document, message, paymentUrl), attachments: [new File([attachmentBytes], filename, { type: 'application/pdf' })] });
 	const sentAt = new Date().toISOString();
 	const { data: sent, error: sentError } = await admin.from('financial_documents').update({ sent_at: sentAt }).eq('id', document.id).select('*').single();
 	if (sentError) throw new Error('Email was sent, but the sent timestamp could not be saved.');
