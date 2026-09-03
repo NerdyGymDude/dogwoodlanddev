@@ -512,7 +512,7 @@
 </script>
 
 <svelte:head
-	><title>Action Center Â· Dogwood Admin</title><meta name="theme-color" content="#18263f" /><link
+	><title>Action Center · Dogwood Admin</title><meta name="theme-color" content="#18263f" /><link
 		rel="manifest"
 		href="/manifest.webmanifest"
 	/><meta name="apple-mobile-web-app-capable" content="yes" /></svelte:head
