@@ -417,8 +417,8 @@ export async function createAndSendInvoice(admin: SupabaseClient, userId: string
 	if (newEmails.length) {
 		const hasPrimary = (existingContacts ?? []).some((contact) => contact.contact_type === 'primary');
 		const { data: inserted, error: insertError } = await admin.from('client_contacts').insert(newEmails.map((email, index) => ({ client_id: state.project.client_id, contact_type: !hasPrimary && index === 0 ? 'primary' : 'secondary', name: 'Invoice recipient', email, phone: null }))).select('id, name, email, phone, contact_type');
-		if (insertError) throw new Error(`Invoice recipients could not be saved: ${insertError.message}`);
-		savedContacts = inserted ?? [];
+		if (insertError) console.warn('Invoice recipient contact persistence failed:', insertError);
+		else savedContacts = inserted ?? [];
 		for (const contact of savedContacts) contactsByEmail.set(String(contact.email ?? '').trim().toLowerCase(), contact);
 	}
 	const ids = [...new Set([...requestedIds, ...manualEmails.map((email) => contactsByEmail.get(email)?.id ?? '').filter(Boolean)])];
