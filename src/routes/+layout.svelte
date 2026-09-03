@@ -1,11 +1,10 @@
 <script lang="ts">
-	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" type="image/png" href="/images/dogwoodlogo-transparent.png?v=2" />
 	<title>Dogwood Land Development</title>
 	<meta
 		name="description"
