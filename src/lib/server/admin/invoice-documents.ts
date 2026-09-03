@@ -18,7 +18,7 @@ export function buildInvoiceEmailContent(
 	const check = paperCheckInstructions();
     const optionalNote = note.trim() && note.trim() !== 'Please find the attached invoice.' ? `<p>${escapeHtml(note.trim()).replace(/\n/g, '<br>')}</p>` : '';
     const paymentContent = paymentUrl
-        ? `<p>To pay your invoice online, please visit:<br><a href="${escapeHtml(paymentUrl)}">${escapeHtml(paymentUrl)}</a></p>`
+        ? `<p><a href="${escapeHtml(paymentUrl)}" style="display:inline-block;padding:12px 18px;border-radius:6px;background:#1e8449;color:#ffffff;font-weight:700;text-decoration:none;">Pay Invoice via Stripe</a></p>`
         : '';
 	return `<p>Please find your Dogwood Land Development invoice attached.</p>${optionalNote}<p>Total Project Invoice: ${money(Number(document.total_project_invoice))}<br>Amount Paid to Date: ${money(Number(document.amount_paid_to_date))}<br>Amount Due: ${money(Number(document.amount_due))}</p>${paymentContent}<p>Make checks payable to ${escapeHtml(check.payee)} and mail to:<br>${check.addressLines.map(escapeHtml).join('<br>')}</p><p>Thank you,<br>Dogwood Land Development</p>`;
 }
